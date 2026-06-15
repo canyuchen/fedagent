@@ -1,0 +1,45 @@
+# --------------------------------------------------------------------------- #
+# FedAgent .gitignore
+# --------------------------------------------------------------------------- #
+
+# --- Large environment data (NOT shipped; fetched via download_data.sh) ------
+# The full WebShop catalog (~5.2 GB) and ALFWorld game files are downloaded on
+# demand. Ignore them everywhere they may land under the vendored framework.
+**/items_shuffle.json
+**/items_ins_v2.json
+
+# A nested .gitignore in the vendored verl-agent has a blanket `data/` rule.
+# We DO ship three small WebShop variants that back `webshop.use_small: true`.
+# Re-include them with negative overrides so they survive the blanket ignore.
+!**/items_shuffle_1000.json
+!**/items_ins_v2_1000.json
+!**/items_human_ins.json
+
+# --- Run artifacts -----------------------------------------------------------
+wandb/
+outputs/
+output/
+logs/
+inference_results/
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Editor / OS -------------------------------------------------------------
+*.bak
+.DS_Store
+.idea/
+.vscode/
+
+# --- Local machine config / secrets ------------------------------------------
+.env
+config/paths.yaml          # machine-specific; copy from paths.yaml.example
+config/_reproduce_generated/   # override configs materialised by reproduce.sh
+
+# --- Internal planning doc (MUST NOT ship) -----------------------------------
+RELEASE_PLAN.md

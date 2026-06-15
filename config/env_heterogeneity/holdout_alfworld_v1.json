@@ -1,0 +1,46 @@
+{
+  "version": "v1",
+  "seed": 99999,
+  "n_holdout_scenes": 8,
+  "n_holdout_trials": 264,
+  "n_holdout_specs_touched": 96,
+  "scenes": [
+    "15",
+    "25",
+    "213",
+    "221",
+    "319",
+    "321",
+    "416",
+    "418"
+  ],
+  "per_room_type": {
+    "bathroom": [
+      "416",
+      "418"
+    ],
+    "bedroom": [
+      "319",
+      "321"
+    ],
+    "kitchen": [
+      "15",
+      "25"
+    ],
+    "living_room": [
+      "213",
+      "221"
+    ]
+  },
+  "per_scene_trial_count": {
+    "15": 92,
+    "25": 55,
+    "213": 11,
+    "221": 7,
+    "319": 31,
+    "321": 18,
+    "416": 26,
+    "418": 24
+  },
+  "comment": "Reserved FloorPlans for OOD env eval. No client training trial in these scenes (the env_disjoint partition function applies this filter before per-spec top-k selection). Pick covers all 4 room types so OOD eval is balanced across env semantics."
+}

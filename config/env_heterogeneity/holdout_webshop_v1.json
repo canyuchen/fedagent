@@ -1,0 +1,51 @@
+{
+  "version": "v1",
+  "seed": 99999,
+  "n_holdout": 30,
+  "asins": [
+    "B000J3HZXS",
+    "B004VMVLLU",
+    "B005F2EVMQ",
+    "B00FR4V65M",
+    "B01BCOAE7G",
+    "B01IADZ9LI",
+    "B072MR7PPJ",
+    "B073WX1ZSK",
+    "B0756KQCQY",
+    "B07FM9K5S3",
+    "B07GYTHLGV",
+    "B07JZ5HVN6",
+    "B07PGQKDFD",
+    "B07WX8FPGG",
+    "B07YBM2JHT",
+    "B07YL7L9BF",
+    "B081KJLMST",
+    "B08533PJ4S",
+    "B08CHHHB46",
+    "B08GXD5MDG",
+    "B08MQF4FV1",
+    "B08NXTHM2W",
+    "B08SKT2TCH",
+    "B08X4GMMZV",
+    "B08Z3PLHLL",
+    "B08ZNVVZ91",
+    "B098M9KX7K",
+    "B09C8FZ9YS",
+    "B09GRD2SK4",
+    "B09RZRQVGT"
+  ],
+  "per_category_count": {
+    "beauty": 6,
+    "electronics": 6,
+    "fashion": 6,
+    "garden": 6,
+    "grocery": 6
+  },
+  "comment": "Reserved distractor ASINs for OOD env eval. Inject into eval_unseen catalog only; never include in any client training catalog.",
+  "stats": {
+    "total_products": 1000,
+    "target_asins": 415,
+    "all_distractors": 585,
+    "partition_distractors": 555
+  }
+}

@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use FedAgent in your research, please cite it as below."
+title: "FedAgent: Federated Agent Reinforcement Learning"
+abstract: >-
+  A decentralized reinforcement-learning framework for collaboratively training
+  LLM agents across distributed clients without sharing local data, with a
+  two-level (task vs. environment) heterogeneity taxonomy and an asymmetric
+  robustness analysis.
+type: software
+license: Apache-2.0
+# TODO(author): fill in the fields below before publishing.
+authors:
+  - family-names: "TODO(author)"
+    given-names: "TODO(author)"
+# repository-code: "TODO(author): public repo URL"
+# url: "TODO(author): project page"
+# version: "TODO(author): release version"
+# date-released: "TODO(author): YYYY-MM-DD"
+preferred-citation:
+  type: article
+  title: "Is Decentralized LLM Agent RL Robust to Heterogeneity? An Asymmetric Tale"
+  authors:
+    - family-names: "TODO(author)"
+      given-names: "TODO(author)"
+  journal: "arXiv preprint arXiv:XXXX.XXXXX"   # TODO(author): arXiv id once available
+  year: 2026
