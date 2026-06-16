@@ -1,7 +1,7 @@
 """Generate the WebShop holdout-distractor list for env-level OOD eval.
 
 Runs once. Output is committed alongside the env-level yamls at
-config/env_heterogeneity/holdout_webshop_v1.json.
+data/env_heterogeneity/holdout_webshop_v1.json.
 yaml configs reference this file via federated.data_sharding.partition.kwargs.holdout_file.
 """
 import json
@@ -15,7 +15,7 @@ WEBSHOP_DATA = (
     REPO_ROOT / "third_party" / "verl-agent" / "agent_system" / "environments"
     / "env_package" / "webshop" / "webshop" / "data"
 )
-HOLDOUT_DIR = REPO_ROOT / "config" / "env_heterogeneity"
+HOLDOUT_DIR = REPO_ROOT / "data" / "env_heterogeneity"
 
 
 def main(holdout_seed: int = 99999, per_category: int = 6):

@@ -19,6 +19,20 @@ bash ../download_data.sh --webshop # WebShop only
 The full catalog (`items_shuffle.json`, `items_ins_v2.json`) and the ALFWorld
 game cache are only required for full-scale runs and are gitignored.
 
+**Bundled env-heterogeneity data (`env_heterogeneity/`).** Small, derived data
+files used by the *environment-level* heterogeneity experiments are committed here
+(they are inputs, not run configs — the run configs live under
+`config/env_heterogeneity/`):
+
+- `lookalike_data/lookalike_v_{price,color,size,price_color}.json` — pre-synthesized
+  lookalike / distractor product pools injected by the `lookalike_injection*` runs.
+- `holdout_{webshop,alfworld}_v1.json` — env-level OOD holdout sets for the
+  `catalog_split` / scene-disjoint runs (regenerate with
+  `tools/env_heterogeneity/gen_holdout_{webshop,alfworld}.py`).
+
+These are **derived from the WebShop and ALFWorld benchmark data (both MIT)** — see
+[`../NOTICE`](../NOTICE) for attribution.
+
 > TODO(author): confirm the final on-disk location each downloaded artifact must
 > land in (see the paths consumed by `tools/resolve_paths.py` and the vendored
 > WebShop / ALFWorld envs).

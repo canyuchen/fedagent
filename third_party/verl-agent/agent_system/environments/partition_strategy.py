@@ -2044,11 +2044,11 @@ def _bm25_variant_partition_webshop(
 # attackable since r_attribute fuzzy-matches text fields we keep identical).
 # ============================================================
 LOOKALIKE_VARIANTS_DEFAULT = [
-    {'name': 'v_price',       'lookalike_file': 'config/env_heterogeneity/lookalike_data/lookalike_v_price.json'},
-    {'name': 'v_color',       'lookalike_file': 'config/env_heterogeneity/lookalike_data/lookalike_v_color.json'},
+    {'name': 'v_price',       'lookalike_file': 'data/env_heterogeneity/lookalike_data/lookalike_v_price.json'},
+    {'name': 'v_color',       'lookalike_file': 'data/env_heterogeneity/lookalike_data/lookalike_v_color.json'},
     # N>=3 extension
-    {'name': 'v_size',        'lookalike_file': 'config/env_heterogeneity/lookalike_data/lookalike_v_size.json'},
-    {'name': 'v_price_color', 'lookalike_file': 'config/env_heterogeneity/lookalike_data/lookalike_v_price_color.json'},
+    {'name': 'v_size',        'lookalike_file': 'data/env_heterogeneity/lookalike_data/lookalike_v_size.json'},
+    {'name': 'v_price_color', 'lookalike_file': 'data/env_heterogeneity/lookalike_data/lookalike_v_price_color.json'},
 ]
 
 _LOOKALIKE_CACHE = {}
@@ -2094,7 +2094,7 @@ def _lookalike_injection_partition_webshop(
     if not os.path.exists(file_path):
         raise FileNotFoundError(
             f"[LOOKALIKE-VARIANT] {file_path} does not exist.\n"
-            f"  The lookalike data ships under config/env_heterogeneity/lookalike_data/; ensure it is present."
+            f"  The lookalike data ships under data/env_heterogeneity/lookalike_data/; ensure it is present."
         )
     lookalikes = _load_lookalikes(file_path)
     print(f"[LOOKALIKE-VARIANT] client {client_id}/{client_num}: variant={chosen['name']} "

@@ -174,7 +174,7 @@ order, are:
 | **Catalog Split** | content | `catalog_split` | per-client catalog floor + distractor pool | `config/env_heterogeneity/catalog_split/` | **B / C** |
 | **Field-Subset Index** | encoding | `bm25_variant` (`variant_pool: fields_only`) | `BM25_VARIANTS_FIELDS_ONLY` | `config/env_heterogeneity/field_subset_index/` | **C** |
 | **BM25 Reweighting** | matching | `bm25_variant` (default pool) | `BM25_VARIANTS_DEFAULT` (extreme `k1`,`b`) | `config/env_heterogeneity/bm25_reweighting/` | **C** |
-| **Lookalike Injection** | content + matching | `lookalike_injection` | `config/env_heterogeneity/lookalike_data/*.json` | `config/env_heterogeneity/lookalike_injection/` | **D** (GRPO) -> **C** (PPO) |
+| **Lookalike Injection** | content + matching | `lookalike_injection` | `data/env_heterogeneity/lookalike_data/*.json` | `config/env_heterogeneity/lookalike_injection/` | **D** (GRPO) -> **C** (PPO) |
 | **Rank Wrapper** | rendering | `rank_wrapper` | `SEARCH_ENGINE_VARIANTS_DEFAULT` | `config/env_heterogeneity/rank_wrapper/` | **D** (GRPO) -> **C** (PPO) |
 
 Each variant directory has a `*_ppo` sibling
@@ -243,7 +243,7 @@ under PPO* — this GRPO->PPO rescue is one of the paper's headline observations
   **content + matching** and elicits Pattern **D** under GRPO (rescued to **C**
   under PPO). The default `N=2` covers the two reward-validated attacks
   (`v_price`, `v_color`); `N>=3` adds `v_size` and `v_price_color`. The lookalike
-  product JSON lives in `config/env_heterogeneity/lookalike_data/`
+  product JSON lives in `data/env_heterogeneity/lookalike_data/`
   (`lookalike_v_price.json`, `lookalike_v_color.json`, `lookalike_v_size.json`,
   `lookalike_v_price_color.json`).
   Config kwargs: `N`, `search_return_n`.

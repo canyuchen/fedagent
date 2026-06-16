@@ -312,19 +312,22 @@ in the figure).
 ### Layout
 
 ```
-config/env_heterogeneity/
+config/env_heterogeneity/                          # run configs (YAML)
   catalog_split/            catalog_split_ppo/
   field_subset_index/         field_subset_index_ppo/
   bm25_reweighting/         bm25_reweighting_ppo/
   lookalike_injection/      lookalike_injection_ppo/
   rank_wrapper/ rank_wrapper_ppo/
+
+data/env_heterogeneity/                            # data (not configs)
   lookalike_data/                                  # offline lookalike pools (see below)
+  holdout_{webshop,alfworld}_v1.json               # env-level OOD holdout sets
 ```
 
-`lookalike_data/` is **not** a run config — it holds the pre-synthesized lookalike
-product pools (`lookalike_v_price.json`, `lookalike_v_color.json`,
-`lookalike_v_size.json`, `lookalike_v_price_color.json`) consumed by the
-`lookalike_injection*` runs.
+`data/env_heterogeneity/lookalike_data/` is **not** a run config — it holds the
+pre-synthesized lookalike product pools (`lookalike_v_price.json`,
+`lookalike_v_color.json`, `lookalike_v_size.json`, `lookalike_v_price_color.json`)
+consumed by the `lookalike_injection*` runs.
 
 ### Run (WebShop env only)
 

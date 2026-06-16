@@ -1,7 +1,7 @@
 """Generate the AlfWorld holdout-scenes list for env-level OOD eval.
 
 Runs once. Output is committed alongside the env-level yamls at
-config/env_heterogeneity/holdout_alfworld_v1.json.
+data/env_heterogeneity/holdout_alfworld_v1.json.
 yaml configs reference this file via federated.data_sharding.partition.kwargs.holdout_file.
 
 Strategy:
@@ -17,7 +17,7 @@ from collections import defaultdict, Counter
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HOLDOUT_DIR = REPO_ROOT / "config" / "env_heterogeneity"
+HOLDOUT_DIR = REPO_ROOT / "data" / "env_heterogeneity"
 ALFWORLD_DATA = Path(os.path.expandvars("$ALFWORLD_DATA")) / "json_2.1.1" / "train"
 TASK_TYPES_USED = {
     "pick_and_place_simple",
