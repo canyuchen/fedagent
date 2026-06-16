@@ -29,7 +29,7 @@ produces.
 > **Before you start.** `config/paths.yaml` is loaded at import time by several
 > modules (including `partition_strategy.py`, which calls
 > `OmegaConf.load(config/paths.yaml)` at module scope). Keep a valid copy
-> present when developing — `cp config/paths.yaml.example config/paths.yaml` —
+> present when developing, `cp config/paths.yaml.example config/paths.yaml`,
 > or imports will fail before your code ever runs. There are **two** conda
 > environments, `fedagent-webshop` and `fedagent-alfworld`; activate the one
 > that matches the environment you are extending (see
@@ -45,8 +45,8 @@ A self-contained environment lives in its own package under
 `third_party/verl-agent/agent_system/environments/env_package/<env>/`, and is
 wired into the framework by two dispatch functions in the same directory:
 
-- `env_manager.py` → `make_envs(config)` — the **non-federated** entry point.
-- `fed_env_manager.py` → `fed_make_envs(config, client_id, client_num)` — the
+- `env_manager.py` → `make_envs(config)`, the **non-federated** entry point.
+- `fed_env_manager.py` → `fed_make_envs(config, client_id, client_num)`, the
   **federated** entry point, which additionally performs the per-client data
   partition (see point 2).
 
@@ -167,7 +167,7 @@ task-level partition funnels through one dispatch function,
 from `fed_env_manager.py` (they need `products`/`ins`/`goals`, which
 `partition_dataset` does not carry).
 
-### The contract — task-level (`partition_dataset` dispatch)
+### The contract, task-level (`partition_dataset` dispatch)
 
 `partition_dataset` is the single entry point for the task-level axis:
 
@@ -227,7 +227,7 @@ To add a strategy:
      existing code seeds a per-client RNG as `np.random.RandomState(42 + client_id)`
      (category) or seeds a *shared* `np.random.default_rng(42)` and indexes the
      result by `client_id` (coverage/hardness). Do **not** use Python's builtin
-     `hash()` on strings for seeding — it is salted per interpreter; use
+     `hash()` on strings for seeding (it is salted per interpreter); use
      `_spec_hash()` (sha256-based, defined at the top of the file) if you need a
      stable hash of a spec string.
    - **Guarantee the floor.** Top up to `min_samples_per_client` if your draw
@@ -257,13 +257,13 @@ To add a strategy:
    block (`config.federated.data_sharding.partition.strategy` and `.kwargs`)
    and forwards `kwargs` to `partition_dataset`. A handful of legacy scalar env
    vars (`OMEGA`, `SIZE_STD`, `SUCCESS_STD`, `ENV_DIV`, …) are still honored for
-   back-compat, but the `partition.kwargs` map is the canonical path — prefer
+   back-compat, but the `partition.kwargs` map is the canonical path, prefer
    it.
 
-### The contract — env-level (transition-kernel) strategies
+### The contract, env-level (transition-kernel) strategies
 
 Env-level strategies perturb the **transition kernel** `T(s'|s,a)`, not the task
-prompt, so they cannot run from a flat `data` list — they need the catalog and
+prompt, so they cannot run from a flat `data` list; they need the catalog and
 goals. They are private helpers in `partition_strategy.py` invoked directly from
 `fed_env_manager.py`'s WebShop branch, and each returns a per-client object that
 becomes an `env_kwargs[...]` entry consumed by SimServer:
@@ -321,16 +321,16 @@ The RL update lives entirely in the vendored verl-agent trainer
    analogous to the existing `grpo/` and `ppo/` scripts. The federated server
    calls it once per client via `federated.base_script_path`
    (`core/fed/script_builder.py`), so the script is the contract between the
-   server and the trainer — keep its argument/env-var interface identical to the
+   server and the trainer, keep its argument/env-var interface identical to the
    GRPO/PPO ones.
 
 4. **No federated changes are required.** `core/` aggregates whatever
    checkpoints the local trainer writes, and `utils/model_aggregation.py`
    operates on the FSDP shard layout, not on algorithm internals. The **one**
    thing to watch is the checkpoint *format*: if your algorithm adds trainable
-   components beyond the actor — PPO already adds a **critic**, which
+   components beyond the actor, PPO already adds a **critic**, which
    `aggregate_verl_models` discovers via `_find_fsdp_critic_dir` and aggregates
-   separately — make sure those extra components land under the same
+   separately, make sure those extra components land under the same
    `checkpoints/global_step_<n>/<component>/` FSDP layout so aggregation finds
    and averages them. An actor-only algorithm needs nothing extra.
 
@@ -365,7 +365,7 @@ The heavy lifting is in the `ModelAggregator` class in the same file.
    `aggregate_round_models`, and update the `else: raise ValueError(...)`. Your
    branch returns a `{component_name: aggregated_path}` dict (at least
    `'actor'`, plus `'critic'` when present), each path pointing at a
-   `global_step_0` FSDP directory — that is the format the next round's clients
+   `global_step_0` FSDP directory, that is the format the next round's clients
    load from.
 
 2. **Operate on FSDP-sharded checkpoints.** Clients save FSDP shards
@@ -374,17 +374,17 @@ The heavy lifting is in the `ModelAggregator` class in the same file.
    `ModelAggregator` are:
 
    - `fedavg_aggregation(model_paths, output_path, weights=None, model_type="actor", n_gpus_per_node=1)`
-     — loads each client's shards, averages parameters (`average_models`,
+     loads each client's shards, averages parameters (`average_models`,
      optionally weighted), then **reshards** to `n_gpus_per_node` and writes a
      fresh `global_step_0` directory. `aggregate_verl_models` is the
      higher-level driver that locates each client's actor (and critic) shard
      dir, checks that all clients are at a consistent `global_step`, and calls
      the shard aggregator per component.
-   - `fedprox_aggregation(model_paths, output_path, mu=0.01, global_model_path=...)`
-     — a worked example of a *non-trivial* rule: it runs FedAvg, then pulls the
+   - `fedprox_aggregation(model_paths, output_path, mu=0.01, global_model_path=...)`,
+     a worked example of a *non-trivial* rule: it runs FedAvg, then pulls the
      result toward the previous global model with
      `w = w_avg + mu*(w_global - w_avg)`. Use it as the template for any rule
-     that needs the prior global model — note `aggregate_round_models` passes
+     that needs the prior global model, note `aggregate_round_models` passes
      `global_model_path` and `mu` through `**kwargs` for exactly this.
 
    Most new rules (trimmed mean, median, FedAvgM, per-client weighting by
@@ -395,11 +395,11 @@ The heavy lifting is in the `ModelAggregator` class in the same file.
    `direct_shard_aggregation` shell out via `torchrun` to
    `tools/aggregation/create_fsdp_shards.py` (a `subprocess.run` call in
    `_multi_gpu_fsdp_aggregation`). That script is a **runtime dependency**, not
-   just a dev tool — do not change its CLI when extending aggregation.
+   just a dev tool, do not change its CLI when extending aggregation.
 
 4. **Weighting hook.** `fedavg_aggregation` and `average_models` already accept
    an optional `weights` list. If your rule is "FedAvg but weighted by
-   `|X_i|`/round participation", you do not need a new dispatch branch — compute
+   `|X_i|`/round participation", you do not need a new dispatch branch, compute
    the weights from `client_results` and pass them through.
 
 ### Validate
@@ -407,7 +407,7 @@ The heavy lifting is in the `ModelAggregator` class in the same file.
 The `tools/aggregation/` toolbox checks correctness against the
 average-of-clients ground truth:
 
-- `tools/aggregation/check_aggregation.py` — has a proper CLI; diff per-client
+- `tools/aggregation/check_aggregation.py`, has a proper CLI; diff per-client
   vs aggregated weights:
 
   ```bash
@@ -416,13 +416,13 @@ average-of-clients ground truth:
       --client-dirs <round>/client_14 <round>/client_81
   ```
 
-- `tools/aggregation/verify_aggregation.py` — asserts the aggregated tensor is
+- `tools/aggregation/verify_aggregation.py`, asserts the aggregated tensor is
   exactly the mean of the client tensors (to `tolerance=1e-6`). It currently
   hardcodes example paths in `main()` rather than taking flags, so point its
   `aggregated_path` / `client*_path` at your run before running it.
-- `tools/aggregation/verl_fsdp_aggregation.py` — a standalone reference FSDP
+- `tools/aggregation/verl_fsdp_aggregation.py`, a standalone reference FSDP
   aggregation implementation to diff your output against.
-- `tools/aggregation/fix_dtensor_loading.py` — DTensor-loading helper for
+- `tools/aggregation/fix_dtensor_loading.py`, DTensor-loading helper for
   reading sharded checkpoints saved under newer PyTorch.
 
 Then add a regression test under `tests/` covering the new rule (`tests/` has no
@@ -438,7 +438,7 @@ model it on).
   aggregation (`utils/`) are decoupled from the RL trainer
   (`third_party/verl-agent`), so extension points 1–3 mostly live in the
   vendored framework while 4 lives in `utils/`.
-- Reproduce / evaluate with the standard entry points — no extension needs a new
+- Reproduce / evaluate with the standard entry points, no extension needs a new
   runner:
 
   ```bash
@@ -447,7 +447,7 @@ model it on).
   ```
 
   Default is 4 × H100, non-SLURM. See
-  [`docs/running_experiments.md`](running_experiments.md) for the run-mode
+  [`docs/running.md`](running.md) for the run-mode
   matrix and [`docs/configuration.md`](configuration.md) for the config-field
   reference. W&B has been removed from the public release; metrics are written
   under `output/`.

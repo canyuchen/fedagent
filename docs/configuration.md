@@ -5,10 +5,10 @@ top-level blocks:
 
 | Block | Purpose | Documented in |
 |---|---|---|
-| `federated:` | FedAgent federation parameters — the contribution of this work (client population, rounds, aggregation, data sharding / heterogeneity) | §(b), in full below |
+| `federated:` | FedAgent federation parameters, the contribution of this work (client population, rounds, aggregation, data sharding / heterogeneity) | §(b), in full below |
 | `verl:` | Training knobs forwarded to the vendored `verl-agent` trainer (RL algorithm, backbone, batch sizes, rollout/FSDP) | §(c), FedAgent-relevant subset only; the rest is upstream |
 | `data_preprocess:` | Parquet generation for the chosen task (mode + train/val sizes) | §(d) |
-| ~~`wandb:`~~ | **Removed in this release.** See the note at the end of §(c). | — |
+| ~~`wandb:`~~ | **Removed in this release.** See the note at the end of §(c). | |
 
 The curated configs that reproduce every figure and table in the paper live
 under `config/`. This document explains how to read those files and how
@@ -26,7 +26,7 @@ config/env_heterogeneity/catalog_split/
 For the heterogeneity construction itself (what each partition strategy *does*,
 the env-variant taxonomy, and the naming caveats) see
 [`docs/heterogeneity.md`](heterogeneity.md). For how to launch a config see
-[`docs/running_experiments.md`](running_experiments.md) and
+[`docs/running.md`](running.md) and
 [`docs/reproducing.md`](reproducing.md).
 
 ---
@@ -42,7 +42,7 @@ fed_<env>_<algo>_total-<N>_cl-per-rd-<k>_rd-<R>_ep-per-cl-<E>_min-goals-per-cl-<
 
 | Token | Meaning | Maps to YAML field |
 |---|---|---|
-| `fed_` | fixed prefix (all configs are federated runs; the centralized and local baselines are special cases — see below) | — |
+| `fed_` | fixed prefix (all configs are federated runs; the centralized and local baselines are special cases, see below) | (all runs are federated) |
 | `<env>` | environment: `webshop` or `alfworld` | `verl.env.env_name` (`Webshop` / `alfworld/AlfredTWEnv`) |
 | `<algo>` | RL algorithm: `grpo` or `ppo` | `verl.algorithm.adv_estimator` (`grpo` / `gae`) |
 | `total-<N>` | total client population *N* | `federated.total_clients` |
@@ -53,7 +53,7 @@ fed_<env>_<algo>_total-<N>_cl-per-rd-<k>_rd-<R>_ep-per-cl-<E>_min-goals-per-cl-<
 | `p-<partition>` | partition strategy *and* the filename spelling of its key hyperparameter(s) | `federated.data_sharding.partition.strategy` plus `partition.kwargs` (see the caveat below) |
 | `[_<kw>...]` | optional trailing tokens spelling out the partition kwargs, e.g. `omega-0.99`, `std-256`, `N-4`, `div-0.3_keep-0.7` | `partition.kwargs.*` |
 
-The default protocol — the one used for the main table — is therefore
+The default protocol, the one used for the main table, is therefore
 `total-100_cl-per-rd-2_rd-70_ep-per-cl-3`: **100 clients, M = 2 sampled per
 round, E = 3 local epochs per round, T = 70 rounds**, which is
 `E × T = 210` total local epochs of training.
@@ -67,7 +67,7 @@ heterogeneity doc):
 
 | Filename `p-...` | `partition.strategy` | `partition.kwargs` keys | Paper name |
 |---|---|---|---|
-| `p-uniform` | `uniform` | — | homogeneous (IID baseline) |
+| `p-uniform` | `uniform` | (none) | homogeneous (IID baseline) |
 | `p-preference_omega-<ω>` | `preference` | `omega` | **Preference** heterogeneity |
 | `p-coverage_std-<s>` | `coverage` | `size_std` | **Coverage** heterogeneity |
 | `p-hardness_success_std-<s>` | `hardness` | `success_std` | **Hardness** heterogeneity |
@@ -128,7 +128,7 @@ seeds of the FedAgent main run (three seeds total).
 
 ---
 
-## (b) The `federated:` block — FedAgent parameters
+## (b) The `federated:` block, FedAgent parameters
 
 This block is the FedAgent contribution. It is consumed by the federation
 orchestrator under `core/fed/` (`round_orchestrator.py`, `aggregator.py`,
@@ -137,10 +137,10 @@ upstream verl-agent. Below is the block from the reference config, annotated.
 
 ```yaml
 federated:
-  total_clients: 100            # N — total client population
-  clients_per_round: 2          # M — clients sampled (uniformly, without replacement) each round
-  total_rounds: 70              # T — communication rounds; E*T = 210 local epochs
-  epochs_per_client: 3          # E — local epochs each selected client runs per round
+  total_clients: 100            # N, total client population
+  clients_per_round: 2          # M, clients sampled (uniformly, without replacement) each round
+  total_rounds: 70              # T, communication rounds; E*T = 210 local epochs
+  epochs_per_client: 3          # E, local epochs each selected client runs per round
   eval_only_final_round: true   # append one extra round that only validates (val_before_train), no FedAvg
 
   aggregation_method: "fedavg"  # "fedavg" | "fedprox"
@@ -161,7 +161,7 @@ federated:
 
   data_sharding:
     seed: 42                    # deterministic client→goal assignment (paper: data_sharding.seed = 42)
-    min_goals_per_client: 100   # |X_i| — minimum tasks each client must receive
+    min_goals_per_client: 100   # |X_i|, minimum tasks each client must receive
     partition:
       strategy: "catalog_split"   # dispatch key (see the decoder table in §a)
       kwargs:
@@ -188,10 +188,10 @@ federated:
 | `clients_per_round` | int | clients sampled per round *M* (filename `cl-per-rd-<k>`) |
 | `total_rounds` | int | communication rounds *T* (filename `rd-<R>`) |
 | `epochs_per_client` | int | local epochs per selected client *E* (filename `ep-per-cl-<E>`) |
-| `eval_only_final_round` | bool | if true, append a final round that runs validation only (no aggregation) — gives a clean end-of-training number |
+| `eval_only_final_round` | bool | if true, append a final round that runs validation only (no aggregation), gives a clean end-of-training number |
 | `aggregation_method` | str | `fedavg` (default) or `fedprox`; defaults to `fedavg` if omitted |
 | `fedprox_mu` | float | FedProx proximal coefficient μ; ignored unless `aggregation_method: fedprox`. FedProx engages only from round 2 onward (round 1 has no global anchor) |
-| `base_script_path` | path | per-client verl-agent launch script: `scripts/verl-agent/{grpo,ppo}/run_{webshop,alfworld}.sh` — must match `<algo>` and `<env>` |
+| `base_script_path` | path | per-client verl-agent launch script: `scripts/verl-agent/{grpo,ppo}/run_{webshop,alfworld}.sh`, must match `<algo>` and `<env>` |
 | `output_dir` | path | root for checkpoints, aggregated models, metrics |
 | `training.timeout_per_client` | int (s) | kill a client that exceeds this wall-clock budget |
 | `training.max_retries` | int | per-client relaunch attempts on failure |
@@ -201,7 +201,7 @@ federated:
 | `logging.save_metrics` | bool | persist per-round metrics |
 | `data_sharding.seed` | int | RNG seed for the client→goal assignment (paper: 42) |
 | `data_sharding.min_goals_per_client` | int | minimum tasks per client \|X_i\| (filename `min-goals-per-cl-<G>`) |
-| `data_sharding.partition.strategy` | str | partition dispatch key — see the decoder table in §(a) and [`docs/heterogeneity.md`](heterogeneity.md) |
+| `data_sharding.partition.strategy` | str | partition dispatch key, see the decoder table in §(a) and [`docs/heterogeneity.md`](heterogeneity.md) |
 | `data_sharding.partition.kwargs` | map | strategy-specific args. Common keys: `omega` (Preference), `size_std` (Coverage), `success_std` (Hardness), `N` + `variant_pool` + `search_return_n` (BM25/lookalike/search env-variants), `env_div` + `keep_ratio` + `search_return_n` (Catalog Split). Omit the whole `kwargs` map for `uniform`. |
 | `environment.cuda_device` | int | default CUDA device for the orchestrator process |
 | `environment.python_path` | path | interpreter used to launch clients |
@@ -218,14 +218,14 @@ through that function directly.
 
 The **WebShop env-level** strategies are special: `catalog_split` (and
 the WebShop distractor path generally) is *not* dispatched through
-`partition_dataset()` — calling it that way raises `NotImplementedError`. It is
+`partition_dataset()`, calling it that way raises `NotImplementedError`. It is
 invoked directly from the WebShop env manager (`fed_env_manager.py`) because it
 needs the products / instructions / goals at construction time. The
 `bm25_variant`, `lookalike_injection`, and
 `rank_wrapper` variants are likewise wired into the WebShop search
 backend rather than the generic slicing path. From a *config-authoring*
-standpoint this distinction does not change anything — you still set
-`partition.strategy` and `partition.kwargs` — but it explains why those keys do
+standpoint this distinction does not change anything, you still set
+`partition.strategy` and `partition.kwargs`, but it explains why those keys do
 not appear as `elif` branches that return data slices in `partition_dataset()`.
 (The ALFWorld env-level analogue is `env_disjoint`, a scene-disjoint partition.)
 
@@ -235,7 +235,7 @@ To add your own heterogeneity, add a strategy plus a branch in
 
 ---
 
-## (c) The `verl:` block — training knobs (FedAgent-relevant subset)
+## (c) The `verl:` block, training knobs (FedAgent-relevant subset)
 
 The `verl:` block is forwarded to the vendored verl-agent trainer. Only the
 knobs that FedAgent users routinely touch are documented here; for the **full**
@@ -311,7 +311,7 @@ verl:
 
   trainer:
     critic_warmup: 0
-    logger: ['console']         # W&B removed — console only
+    logger: ['console']         # W&B removed, console only
     project_name: verl_agent_webshop_federated
     experiment_name: grpo_qwen2.5_1.5b_federated_catalog_split
     n_gpus_per_node: 4
@@ -350,13 +350,13 @@ GRPO config has neither). From the PPO reference
 | `algorithm.adv_estimator` | `grpo` (main) or `gae` (PPO appendix). This is the real GRPO/PPO switch; the filename `<algo>` mirrors it (`grpo`/`ppo`) |
 | `algorithm.use_kl_in_reward` | keep `false` (KL enters via the actor loss instead) |
 | `data.train_files` / `data.val_files` | preprocessed parquet paths under `data/verl-agent_<env>_<algo>/text/`; must match `<env>` and `<algo>` |
-| `data.train_batch_size` | **8 for GRPO, 64 for PPO** — the most important algorithm-dependent batch knob in this repo |
+| `data.train_batch_size` | **8 for GRPO, 64 for PPO**: the most important algorithm-dependent batch knob in this repo |
 | `data.val_batch_size` | `64` in every shipped config (both GRPO and PPO) |
 | `data.max_prompt_length` / `max_response_length` | sequence limits (4096 / 512) |
 | `actor_rollout_ref.model.path` / `tokenizer_path` | backbone. Main table: `Qwen/Qwen2.5-1.5B-Instruct` (default) plus `Qwen2.5-3B`, `Qwen2.5-7B`, `Llama-3.2-3B`. Swapping the backbone = changing these two (and the matching `critic.model.path` for PPO) |
 | `actor_rollout_ref.actor.optim.lr` | local learning rate (paper: `1e-6`) |
 | `actor_rollout_ref.actor.ppo_mini_batch_size` / `ppo_micro_batch_size_per_gpu` | actor update batching |
-| `actor_rollout_ref.actor.fsdp_config.param_offload` / `optimizer_offload` | FSDP CPU offload. Both `false` on 4×H100; set `true` to fit smaller GPUs (`reproduce.sh --fsdp on`). See [`docs/running_experiments.md`](running_experiments.md) |
+| `actor_rollout_ref.actor.fsdp_config.param_offload` / `optimizer_offload` | FSDP CPU offload. Both `false` on 4×H100; set `true` to fit smaller GPUs (`reproduce.sh --fsdp on`). See [`docs/running.md`](running.md) |
 | `actor_rollout_ref.actor.checkpoint.contents` | `['model']` keeps per-client checkpoints to weights only (important with up to T×M client checkpoints) |
 | `actor_rollout_ref.rollout.name` | rollout engine (`vllm`) |
 | `actor_rollout_ref.rollout.tensor_model_parallel_size` | vLLM tensor-parallel degree; keep equal to `trainer.n_gpus_per_node` (paper: 4). `reproduce.sh --gpus N` adjusts both |
@@ -365,9 +365,9 @@ GRPO config has neither). From the PPO reference
 | `env.env_name` | `Webshop` or `alfworld/AlfredTWEnv` |
 | `env.seed` | env seed (paper: 0) |
 | `env.max_steps` | per-episode step cap: WebShop 15, ALFWorld 50 |
-| `env.rollout.n` | rollouts per task — this **is** the GRPO group size (8) |
+| `env.rollout.n` | rollouts per task; this **is** the GRPO group size (8) |
 | `env.webshop.use_small` | WebShop only: use the shipped small catalog. Absent in ALFWorld configs (there is no `env.webshop` block there) |
-| `trainer.logger` | `['console']` only — W&B is removed (see note) |
+| `trainer.logger` | `['console']` only, W&B is removed (see note) |
 | `trainer.n_gpus_per_node` / `nnodes` | hardware topology (paper: 4 / 1) |
 | `trainer.test_freq` | evaluate every *N* rounds (paper: 5) |
 | `trainer.val_before_train` | run one validation pass before training; also what `eval_only_final_round` reuses |
@@ -375,14 +375,14 @@ GRPO config has neither). From the PPO reference
 | `trainer.save_dir` | `null`: paths are derived from `federated.output_dir` |
 | `critic.*` (PPO only) | critic optimizer / model / batching; present only when `adv_estimator: gae` |
 
-For any field not listed above — `actor.entropy_coeff`, `ulysses_sequence_parallel_size`,
-KV-cache and chunked-prefill internals, the full critic schema, etc. — consult
+For any field not listed above, `actor.entropy_coeff`, `ulysses_sequence_parallel_size`,
+KV-cache and chunked-prefill internals, the full critic schema, etc., consult
 upstream verl-agent / veRL. FedAgent does not override those beyond the values
 shown in the shipped configs.
 
 > **Removed in this release: W&B.** There is no `wandb:` block and no
 > `'wandb'` entry in `trainer.logger`; every shipped config logs to
-> `console` only. Do not re-introduce a `wandb:` block — nothing reads it. If
+> `console` only. Do not re-introduce a `wandb:` block, nothing reads it. If
 > you want experiment tracking, add your own logger backend in the verl-agent
 > trainer rather than relying on a config block.
 

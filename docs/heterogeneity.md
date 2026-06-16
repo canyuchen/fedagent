@@ -1,8 +1,8 @@
 # Heterogeneity Construction
 
 This document is the conceptual core of FedAgent. It describes the **two-level
-heterogeneity taxonomy** the paper builds on — *task-level* (axis 1) and
-*environment-level* (axis 2) — and, for each level, the concrete constructors,
+heterogeneity taxonomy** the paper builds on, *task-level* (axis 1) and
+*environment-level* (axis 2), and, for each level, the concrete constructors,
 the configuration knobs that select and parameterize them, and how to add your
 own. It is meant to be read alongside the code it points at, so every path,
 config key, strategy name, and function below has been written against the
@@ -30,8 +30,7 @@ $P$. Heterogeneity across clients can therefore enter through **either** of two
 structurally different channels, and the entire framework is organized around
 keeping those two channels separable:
 
-- A **task descriptor** $\tau$ enters the policy through its *input channel* —
-  it is literally part of the prompt the agent reads. The policy can therefore
+- A **task descriptor** $\tau$ enters the policy through its *input channel*: it is literally part of the prompt the agent reads. The policy can therefore
   condition on it, so $\tau$ is **observable**. Task-level heterogeneity is the
   *robust* case: it is **Pattern A** in the paper's taxonomy.
 - A **transition kernel** $P$ is implicit in the dynamics. The policy never sees
@@ -39,7 +38,7 @@ keeping those two channels separable:
   returns. $P$ is therefore **not observable**, and a perturbation of $P$ can be
   *worst-case non-robust*.
 
-This single distinction — call it the **Input-Dynamics Asymmetry** — is what
+This single distinction, call it the **Input-Dynamics Asymmetry**: is what
 drives the paper's asymmetric-robustness result. FedAgent ships independent
 constructors for both levels precisely so the two axes can be swept on their own
 and the asymmetry can be measured rather than assumed. Throughout the task-level
@@ -73,7 +72,7 @@ that one axis can be moved without disturbing the other two:
 | **Coverage** (*how many tasks?*) | `coverage` | `coverage` | `size_std` | `SIZE_STD` | `1` -> `256` | per-client pool size |
 | **Hardness** (*how hard are the tasks?*) | `hardness` | `hardness` | `success_std` | `SUCCESS_STD` | `1` -> `256` | per-client success-rate mix |
 
-> **Naming caveat — read this once and the codebase stops being confusing.**
+> **Naming caveat, read this once and the codebase stops being confusing.**
 > *Preference* heterogeneity is spelled three different ways across the stack:
 > the **code** dispatch strategy is `preference`, the **paper** calls it
 > *Preference*, and the **config filename** uses the token `preference`. They are
@@ -89,7 +88,7 @@ All three are implemented in `partition_strategy.py` and reached through
 ALFWorld backend (the ALFWorld variant derives its category from the task-file
 path rather than a `preference` field).
 
-- **Preference — `preference_partition` (Dirichlet, $\omega$).**
+- **Preference, `preference_partition` (Dirichlet, $\omega$).**
   Each client's category distribution is drawn from a Dirichlet centered on the
   global category marginal $\pi$:
 
@@ -109,7 +108,7 @@ path rather than a `preference` field).
   the value is clipped into $(10^{-3}, 1-10^{-3})$ before use. Sweep endpoints
   used in the paper: `omega = 0.01` (near-uniform) and `omega = 0.99` (extreme).
 
-- **Coverage — `coverage_partition` (Beta sizes, fixed overlap).**
+- **Coverage, `coverage_partition` (Beta sizes, fixed overlap).**
   Each client's *pool size* is drawn from a Beta-shaped distribution while the
   cross-client overlap is held at `overlap_ratio = 1.3`, and the union of client
   pools is kept covering the dataset as far as possible. This changes the
@@ -118,23 +117,23 @@ path rather than a `preference` field).
   `SIZE_STD`); endpoints `1` (nearly equal pool sizes) and `256` (extreme size
   imbalance).
 
-- **Hardness — `hardness_partition` (success-rate quotas).**
+- **Hardness, `hardness_partition` (success-rate quotas).**
   Tasks are first labelled success/fail by a reference checkpoint (the zero-shot
   backbone) recorded in a trajectories file; each client is then given a quota of
   "success" tasks drawn from a Normal-shaped distribution over
   `[0, min_goals_per_client]`, and the remainder of its fixed quota is filled
-  with random tasks. The number of tasks per client stays constant — only the
+  with random tasks. The number of tasks per client stays constant, only the
   *difficulty mix* shifts. `success_std` controls the spread (exported as
   `SUCCESS_STD`); endpoints `1` (uniform difficulty) and `256` (extreme; some
   clients see almost only solvable tasks, others almost only hard ones).
   *Prerequisite:* the reference trajectories file is produced by the eval
-  harness — run `bash eval/eval_webshop.sh` (resp. `eval/eval_alfworld.sh`) first
+  harness, run `bash eval/eval_webshop.sh` (resp. `eval/eval_alfworld.sh`) first
   to write `output/inference/all_trajectories.json` (resp.
   `all_trajectories_alfworld.json`), which `hardness_partition` reads by default.
 
 By construction each axis offers (D1) target control of its own dispersion,
 (D2) invariance of the *other* two measures, (D3) factor invariance (the global
-mixture is preserved in expectation), and (D4) joint configurability — so the
+mixture is preserved in expectation), and (D4) joint configurability, so the
 three can be combined or varied one at a time. The formal statements and proofs
 are in the paper appendix.
 
@@ -152,7 +151,7 @@ robust," and it is the contrast the environment-level axis is designed to break.
 
 Clients share the task distribution but differ in their **transition kernel**
 $P_i$. The task partition is held **uniform** across every env-level experiment
-(so the only thing that varies is $P$), and — critically — **validation is run
+(so the only thing that varies is $P$), and, critically, **validation is run
 on the unperturbed environment** so that all clients are scored on the same
 yardstick (see [§4](#how-a-variant-is-selected-config---env-vars---dispatch)).
 
@@ -160,13 +159,13 @@ WebShop's transition pipeline factors into **four stages**, and the five env
 variants instantiate perturbations across them. The four stages, in pipeline
 order, are:
 
-1. **content** — *what is in the catalog* (the set of products the search can
+1. **content**: *what is in the catalog* (the set of products the search can
    ever return);
-2. **encoding** — *how a product is turned into indexed text* (which fields feed
+2. **encoding**: *how a product is turned into indexed text* (which fields feed
    the retriever);
-3. **matching** — *how a query is scored against that text* (the BM25 ranking
+3. **matching**: *how a query is scored against that text* (the BM25 ranking
    function);
-4. **rendering** — *how the ranked results are presented* to the agent (order /
+4. **rendering**: *how the ranked results are presented* to the agent (order /
    wrapping of the result page).
 
 | Variant (paper) | Pipeline stage | Strategy key | Variant pool / data | Config dir | Pattern elicited |
@@ -188,16 +187,16 @@ optimal policy still largely transfers and FedAvg degrades gracefully; **C** =
 divergence that is real but recoverable; **D** = the worst case where naive
 aggregation breaks down under GRPO. The two strongest attacks (Lookalike
 Injection and Rank Wrapper) land in **D** under GRPO but are *rescued back to C
-under PPO* — this GRPO->PPO rescue is one of the paper's headline observations.
+under PPO*; this GRPO->PPO rescue is one of the paper's headline observations.
 
 ### What each variant does
 
-- **Catalog Split — `catalog_split` (content).**
+- **Catalog Split, `catalog_split` (content).**
   Each client is assigned a different slice of the product catalog: a protected
   per-client floor of *target* ASINs (so every client can still complete its
   goals) plus a per-client *distractor* pool drawn so the catalogs diverge. The
   optimal "search -> click -> buy" behavior is unchanged by *which* products are
-  present, so $\pi^\star$ stays essentially invariant — this is the mildest
+  present, so $\pi^\star$ stays essentially invariant; this is the mildest
   perturbation (Pattern B/C). The `_v5` algorithm differs from the older v4
   (`distractor_disjoint`): the task partition is `uniform` (100 goals/client,
   matching the main experiment) and the env partition protects only each
@@ -208,7 +207,7 @@ under PPO* — this GRPO->PPO rescue is one of the paper's headline observations
   `keep_ratio` (per-client distractor density), `search_return_n` (BM25 top-K).
   Implemented by `_distractor_disjoint_partition_webshop_v5`.
 
-- **Field-Subset Index — `bm25_variant` with `variant_pool: fields_only` (encoding).**
+- **Field-Subset Index, `bm25_variant` with `variant_pool: fields_only` (encoding).**
   Each client indexes a *different subset of document fields*, so the same query
   ranks products differently and the agent must learn per-client query crafting.
   The pool is `BM25_VARIANTS_FIELDS_ONLY` (all share `k1=1.2, b=0.75`; only the
@@ -220,7 +219,7 @@ under PPO* — this GRPO->PPO rescue is one of the paper's headline observations
   `search_return_n`. This is the **encoding**-stage perturbation and sits at
   Pattern **C**.
 
-- **BM25 Reweighting — `bm25_variant` with the default pool (matching).**
+- **BM25 Reweighting, `bm25_variant` with the default pool (matching).**
   Same dispatch as Field-Subset, but with `variant_pool` omitted, so the pool is
   `BM25_VARIANTS_DEFAULT`: all variants index the **full** field set but use
   **extreme `(k1, b)` corners** that reshape TF saturation and length
@@ -228,18 +227,18 @@ under PPO* — this GRPO->PPO rescue is one of the paper's headline observations
   `(k1=1.2, b=0.75)` plus the corners `(1.2, 0.00)`, `(0.3, 0.75)`, and
   `(5.0, 0.75)` (entries 5-8, e.g. `(0.1,0.75)`, `(1.2,1.00)`, `(2.0,0.50)`,
   `(0.3,0.00)`, extend it for `N>4`). Because only *ranking* changes, the
-  catalog and fields are identical across clients — this is the **matching**-stage
+  catalog and fields are identical across clients; this is the **matching**-stage
   perturbation, Pattern **C**.
   Config kwargs: `N`, `search_return_n` (no `variant_pool`).
   Implemented by `_bm25_variant_partition_webshop`.
 
-- **Lookalike Injection — `lookalike_injection` (content + matching).**
+- **Lookalike Injection, `lookalike_injection` (content + matching).**
   The strongest *content* attack: each client gets a per-client set of synthetic
   **lookalike products** appended to the base 1000-product catalog. The
   lookalikes are tuned to fool BM25 ranking *and* to defeat one specific reward
   subterm, so the agent is forced to learn to check a particular attribute
   (price, color, ...) to filter out the fakes. Because different clients attack
-  different attributes, their optimal policies diverge structurally — this spans
+  different attributes, their optimal policies diverge structurally; this spans
   **content + matching** and elicits Pattern **D** under GRPO (rescued to **C**
   under PPO). The default `N=2` covers the two reward-validated attacks
   (`v_price`, `v_color`); `N>=3` adds `v_size` and `v_price_color`. The lookalike
@@ -250,7 +249,7 @@ under PPO* — this GRPO->PPO rescue is one of the paper's headline observations
   Implemented by `_lookalike_injection_partition_webshop` (file paths are
   resolved against `PROJECT_ROOT`, exported for you by the launcher).
 
-- **Rank Wrapper — `rank_wrapper` (rendering).**
+- **Rank Wrapper, `rank_wrapper` (rendering).**
   Each client's search results are post-processed by a different *wrapper* on top
   of the same BM25 base, breaking any "trust the top position" heuristic while
   preserving the reward gradient (the target stays reachable in the candidate
@@ -385,7 +384,7 @@ while omitting it (or `default`) selects `BM25_VARIANTS_DEFAULT` (matching).
 
 Per-client variant assignment is **deterministic by `client_id`**
 (`np.random.RandomState(base_seed + client_id)`, `base_seed = 42`) so the same
-client keeps the same variant across rounds — this is required for FedAvg to
+client keeps the same variant across rounds; this is required for FedAvg to
 average comparable policies round to round.
 
 ---
@@ -395,19 +394,19 @@ average comparable policies round to round.
 The config groups under `config/` map to the paper's figures and tables; the
 env-level and task-level sweeps relevant to this document are:
 
-- **Task-level** — `config/task_heterogeneity/{grpo,ppo}/{webshop,alfworld}/`
+- **Task-level**: `config/task_heterogeneity/{grpo,ppo}/{webshop,alfworld}/`
   produce the heterogeneity-challenges figure
   (`heterogeneous_combined_val_success_rate.pdf`, six panels: a,b Preference;
   c,d Coverage; e,f Hardness). Sweep endpoints: Preference `omega ∈ {0.01, 0.99}`,
-  Coverage `size_std ∈ {1, 256}`, Hardness `success_std ∈ {1, 256}` — encoded in
+  Coverage `size_std ∈ {1, 256}`, Hardness `success_std ∈ {1, 256}`, encoded in
   the filenames as `preference_omega-*`, `coverage_std-*`, `hardness_success_std-*`.
-- **Environment-level** — `config/env_heterogeneity/{catalog_split,field_subset_index,bm25_reweighting,lookalike_injection,rank_wrapper}/`
+- **Environment-level**: `config/env_heterogeneity/{catalog_split,field_subset_index,bm25_reweighting,lookalike_injection,rank_wrapper}/`
   (plus the `_ppo` siblings) produce the env-heterogeneity figure
   (`webshop_env_variants_combined_val_success_rate.pdf`, GRPO left / PPO right).
   Catalog Split additionally sweeps `env_div ∈ {0.0, 0.3, 0.7, 1.0}` at
   `keep_ratio = 0.7` (four YAMLs in `catalog_split/`); the BM25/field-subset variants
   sweep `N ∈ {4, 8}`; Lookalike Injection sweeps `N ∈ {2, 4}`; Rank Wrapper is
-  `N = 4`. These multi-point sweeps exist only in the GRPO directories — each
+  `N = 4`. These multi-point sweeps exist only in the GRPO directories, each
   `*_ppo` sibling contains a single config (the most-divergent sweep point used
   for the GRPO-vs-PPO comparison), not the full sweep.
 
@@ -459,7 +458,7 @@ Where you add code depends on which level you are extending.
    consumed.
 
 In both cases, keep the deterministic-by-`client_id` assignment and the
-unperturbed-validation invariant — they are what make federated runs reproducible
+unperturbed-validation invariant; they are what make federated runs reproducible
 and the cross-variant curves comparable.
 
 See [`docs/extending.md`](extending.md) for the broader extension contract

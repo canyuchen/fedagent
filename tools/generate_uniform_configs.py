@@ -29,7 +29,7 @@ OUT_BASE = PROJ_ROOT / "config" / "uniform"
 
 # ---------------------------------------------------------------------------
 # Per-(algo, task) parallel-client overrides (added 2026-05-29 from
-# docs/running_experiments.md implementation matrix).
+# docs/running.md implementation matrix).
 #
 # Default for all models is Sequential (TP=4, n_gpus_per_node=4).
 # Override entry shape: {(algo, task): {"tp_size": <int>, "n_gpus_per_node": <int>}}

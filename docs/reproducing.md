@@ -8,13 +8,13 @@ cross-checked against the released config tree under
 
 Read this together with:
 
-- [`installation.md`](installation.md) — the **two** conda environments
+- [`installation.md`](installation.md), the **two** conda environments
   (`fedagent-webshop`, `fedagent-alfworld`) you must create first.
-- [`running_experiments.md`](running_experiments.md) — the hardware /
-  parallelism flags (`--gpus`, `--mode`, `--fsdp`, `--single-gpu`, `--slurm`).
-- [`heterogeneity.md`](heterogeneity.md) — the two-level heterogeneity taxonomy
+- [`running.md`](running.md), how to run any config directly and the hardware
+  knobs (GPU count, FSDP, client parallelism) behind the `reproduce.sh` flags below.
+- [`heterogeneity.md`](heterogeneity.md), the two-level heterogeneity taxonomy
   that the task-level and env-level experiments instantiate.
-- [`configuration.md`](configuration.md) — the field-by-field config reference.
+- [`configuration.md`](configuration.md), the field-by-field config reference.
 
 ---
 
@@ -52,9 +52,22 @@ only thing that changes between heterogeneity sweep points.
 
 ### How to launch a run
 
-There are two equivalent entry points.
+There are two equivalent entry points. The named wrapper drives this stack:
 
-**1. Named happy-path experiments** — `reproduce.sh` exposes two curated names
+```
+reproduce.sh <experiment>          # resolve a named experiment (+ flags) -> config
+  └─ scripts/start_federated.sh    # per-run launcher (GPU masking, path resolution)
+       └─ core/custom_fed_server.py
+            ├─ partitions the data into N clients
+            ├─ each round: samples M clients, runs E local epochs each via the
+            │    verl-agent base script (federated.base_script_path)
+            └─ aggregates the client models (utils/model_aggregation.py)
+```
+
+(`tools/run_federated.py`, entry point 2 below, is the re-runnable direct runner;
+it launches the same `scripts/start_federated.sh`.)
+
+**1. Named happy-path experiments**: `reproduce.sh` exposes two curated names
 for the main-table GRPO runs on the default backbone:
 
 ```bash
@@ -72,16 +85,26 @@ bash reproduce.sh <experiment> [--gpus N] [--mode fed|serial]
                                [--fsdp on|off] [--single-gpu] [--slurm]
 ```
 
-The default is **4 × H100 (80 GB) on a single node, non-SLURM** (launched via
-`torchrun`); pass `--slurm` on a cluster. See
-[`running_experiments.md`](running_experiments.md) for what each flag changes.
+The default is **4 × H100 (80 GB) on a single node, non-SLURM**; pass `--slurm`
+on a cluster. Each flag is a convenience that overrides a config knob:
+
+| Flag | Overrides (config knob) |
+|---|---|
+| `--gpus N` | `verl.trainer.n_gpus_per_node` + rollout `tensor_model_parallel_size` |
+| `--mode serial` | `federated.training.parallel_workers = 1` |
+| `--fsdp on` / `off` | actor (and PPO critic) `fsdp_config.param_offload` |
+| `--single-gpu` | `n_gpus_per_node = 1`, `tensor_model_parallel_size = 1` |
+| `--slurm` | submit the launcher via `sbatch` instead of running locally |
+
+[`running.md`](running.md) documents these knobs in full and shows how to run any
+config directly, without `reproduce.sh`.
 
 > **Note.** `reproduce.sh` wires `webshop-main` and `alfworld-main` as named
 > shortcuts (plus the `--gpus` / `--mode` / `--fsdp` / `--single-gpu` / `--slurm`
 > overrides). To run any other config, point the federated runner at it directly
 > (next paragraph).
 
-**2. Any config, directly** — every other cell in every table/figure is run by
+**2. Any config, directly**: every other cell in every table/figure is run by
 handing its **config name** to the federated runner. The config name is the path
 **under `config/`, without the `.yaml`** suffix, passed as a positional argument:
 
@@ -105,7 +128,7 @@ Activate the conda environment that matches the benchmark in the filename
 ### Shared federation protocol
 
 Unless an experiment overrides it (the decentralized ablations do, on purpose),
-every run uses the default protocol — reflected directly in the config:
+every run uses the default protocol, reflected directly in the config:
 
 ```yaml
 federated:
@@ -176,8 +199,7 @@ the pooled dataset; Local trains one client on its own shard; FedAgent
 distributes the same 210 epochs across `M=2` clients over `T=70` rounds with
 FedAvg between rounds.
 
-The **Local** rows in the paper are the three fixed client indices **21, 42, 84**
-— these are the goal shards that `local_client1/2/3` train on under the
+The **Local** rows in the paper are the three fixed client indices **21, 42, 84**; these are the goal shards that `local_client1/2/3` train on under the
 `data_sharding.seed = 42` partition.
 
 ### Run
@@ -191,10 +213,10 @@ bash reproduce.sh webshop-main
 conda activate fedagent-alfworld
 bash reproduce.sh alfworld-main
 
-# Any other cell — e.g. the Centralized WebShop-GRPO baseline:
+# Any other cell, e.g. the Centralized WebShop-GRPO baseline:
 python tools/run_federated.py --restart-resume uniform/Qwen2.5-1.5B-Instruct/centralized/grpo/fed_webshop_grpo_total-1_cl-per-rd-1_rd-1_ep-per-cl-210_min-goals-per-cl-100_p-uniform
 
-# A larger backbone — e.g. FedAgent ALFWorld-GRPO with Qwen2.5-7B:
+# A larger backbone, e.g. FedAgent ALFWorld-GRPO with Qwen2.5-7B:
 python tools/run_federated.py --restart-resume uniform/Qwen2.5-7B-Instruct/main/grpo/fed_alfworld_grpo_total-100_cl-per-rd-2_rd-70_ep-per-cl-3_min-goals-per-cl-100_p-uniform
 ```
 
@@ -206,7 +228,7 @@ python tools/run_federated.py --restart-resume uniform/Qwen2.5-7B-Instruct/main/
 - **GRPO vs PPO:** the `grpo/` configs back the main table; the sibling `ppo/`
   configs back the PPO appendix table. For PPO, the critic uses
   `optimizer_offload=false` (offload off on H100), matching
-  [`running_experiments.md`](running_experiments.md).
+  [`running.md`](running.md).
 - **Seeds:** `main/` is seed 0; `main_seed1/` and `main_seed2/` are the other two
   of the 3 reported seeds. The Centralized and Local baselines are likewise run
   for 3 seeds (see [Seeds](#seeds-and-statistical-reporting)).
@@ -219,7 +241,7 @@ python tools/run_federated.py --restart-resume uniform/Qwen2.5-7B-Instruct/main/
 ## 2. Task-level heterogeneity → `config/task_heterogeneity/`
 
 **Backs:** the task-level heterogeneity figure
-(`heterogeneous_combined_val_success_rate.pdf`), **6 panels** — two per sub-type,
+(`heterogeneous_combined_val_success_rate.pdf`), **6 panels**: two per sub-type,
 one column per benchmark:
 
 | Panels | Sub-type |
@@ -229,7 +251,7 @@ one column per benchmark:
 | (e), (f) | **Hardness** |
 
 Task-level heterogeneity enters the policy **through the prompt** (the task
-descriptor is observable), so the federated objective is robust to it — this is
+descriptor is observable), so the federated objective is robust to it; this is
 the paper's **Pattern A** axis.
 
 ### Layout
@@ -240,7 +262,7 @@ config/task_heterogeneity/
   ppo/  {webshop,alfworld}/
 ```
 
-Each leaf holds the **6 sweep configs** — the two endpoints of each sub-type:
+Each leaf holds the **6 sweep configs**: the two endpoints of each sub-type:
 
 | Sub-type | Code strategy | Filename token | Endpoints (low → high heterogeneity) |
 |---|---|---|---|
@@ -285,7 +307,7 @@ the relevant benchmark, for 3 seeds each. The PPO appendix variant uses the
 ## 3. Environment-level heterogeneity → `config/env_heterogeneity/`
 
 **Backs:** the environment-level heterogeneity figure
-(`webshop_env_variants_combined_val_success_rate.pdf`) — **GRPO on the left, PPO
+(`webshop_env_variants_combined_val_success_rate.pdf`), **GRPO on the left, PPO
 on the right**.
 
 Env-level heterogeneity enters through the **transition kernel** (the policy only
@@ -304,7 +326,7 @@ four stages, and the five variants perturb across them:
 | **Rank Wrapper** | `rank_wrapper/` | `rank_wrapper` | rendering | `p-rank_wrapper_N-4` | D (GRPO) → C (PPO) |
 
 The B/C/D labels are the paper's worst-case-degradation spectrum: Catalog Split
-sits at Pattern B/C (mildest — the optimal policy still transfers); the two BM25
+sits at Pattern B/C (mildest, the optimal policy still transfers); the two BM25
 variants land at C; Lookalike Injection and Rank Wrapper hit Pattern D under
 GRPO and are **rescued to C under PPO** (the source of the GRPO-vs-PPO contrast
 in the figure).
@@ -324,7 +346,7 @@ data/env_heterogeneity/                            # data (not configs)
   holdout_{webshop,alfworld}_v1.json               # env-level OOD holdout sets
 ```
 
-`data/env_heterogeneity/lookalike_data/` is **not** a run config — it holds the
+`data/env_heterogeneity/lookalike_data/` is **not** a run config; it holds the
 pre-synthesized lookalike product pools (`lookalike_v_price.json`,
 `lookalike_v_color.json`, `lookalike_v_size.json`, `lookalike_v_price_color.json`)
 consumed by the `lookalike_injection*` runs.
@@ -349,8 +371,8 @@ python tools/run_federated.py --restart-resume env_heterogeneity/lookalike_injec
   Split over `env_div ∈ {0.0, 0.3, 0.7, 1.0}`, BM25/field-subset over `N ∈
   {4, 8}`, Lookalike over `N ∈ {2, 4}`); each `*_ppo` directory, however, holds
   only the **single** most-divergent sweep point used for the GRPO-vs-PPO
-  comparison — do not expect a full PPO sweep.
-- **Validation is always on the UNPERTURBED WebShop environment** — the eval
+  comparison, do not expect a full PPO sweep.
+- **Validation is always on the UNPERTURBED WebShop environment**: the eval
   harness forces all perturbation kwargs to `None`, so the metric isolates
   post-aggregation generalization rather than per-client overfitting.
 - `SEARCH_RETURN_N = 200` is held fixed throughout to prevent target dropouts
@@ -400,7 +422,7 @@ python tools/run_federated.py --restart-resume decentralized/ep_per_round_change
 ### Notes
 
 - The **baseline point** for each sweep (`M=2`, `E=3`, `|X_i|=100`) is *not*
-  duplicated here — it is the corresponding uniform main-table run from
+  duplicated here; it is the corresponding uniform main-table run from
   [`config/uniform/`](#1-main-table--configuniform).
 - `ep_per_round_change/` scales `total_rounds` (T) inversely with
   `epochs_per_client` (E) to hold the total local-epoch budget near 210, so the
@@ -425,7 +447,7 @@ GPU-hours = wall-clock × 4 GPUs. Multiply by **3 seeds** for each reported
 mean ± std cell, and by the number of sweep points / backbones in a given
 figure or table block. To shrink cost while developing, use `--single-gpu` for
 a smoke run or `--mode serial` to reduce peak GPU demand (at the cost of
-wall-clock); see [`running_experiments.md`](running_experiments.md).
+wall-clock); see [`running.md`](running.md).
 
 ---
 
@@ -452,9 +474,9 @@ runs on the **unperturbed** environment.
 
 Set in every config:
 
-- `trainer.test_freq = 5` — validate every 5 communication rounds (the source of
+- `trainer.test_freq = 5`, validate every 5 communication rounds (the source of
   the training-dynamics curves).
-- `federated.eval_only_final_round: true` — the headline table number is the
+- `federated.eval_only_final_round: true`, the headline table number is the
   validation at the final round; the intermediate `test_freq` evaluations
   populate the curves.
 - In-training validation batch: `data.val_batch_size = 64` (uniform across all
@@ -510,16 +532,16 @@ population overlaid as scatter points; table cells aggregate the 3 seeds.
 To go beyond the released sweeps (full contract in
 [`extending.md`](extending.md)):
 
-1. **New environment / dataset** — add an env package under
+1. **New environment / dataset**: add an env package under
    `third_party/verl-agent/agent_system/environments/env_package/` and register
    it.
-2. **New heterogeneity construction** — add a strategy plus an `elif` branch in
+2. **New heterogeneity construction**: add a strategy plus an `elif` branch in
    `partition_dataset()` in
    [`partition_strategy.py`](../third_party/verl-agent/agent_system/environments/partition_strategy.py),
    then select it via `federated.data_sharding.partition.strategy`.
-3. **New RL algorithm** — implemented in the verl-agent trainer (PPO / GRPO /
+3. **New RL algorithm**: implemented in the verl-agent trainer (PPO / GRPO /
    GiGPO / RLOO / DAPO are available upstream); set `verl.algorithm.adv_estimator`.
-4. **New aggregation rule** — extend
+4. **New aggregation rule**: extend
    [`utils/model_aggregation.py`](../utils/model_aggregation.py) (FedAvg and
    FedProx today) and validate with
    `tools/aggregation/check_aggregation.py` and

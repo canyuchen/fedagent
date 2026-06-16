@@ -1,7 +1,7 @@
 # Installation
 
 FedAgent runs on **Python 3.10** with **NVIDIA GPUs** (paper default: 4 × H100
-80 GB, but smaller setups work — see [running_experiments.md](running_experiments.md)).
+80 GB, but smaller setups work, see [running.md](running.md)).
 
 ## Why two conda environments
 
@@ -32,17 +32,17 @@ conda activate fedagent-webshop
 - **JDK required** for `pyserini`/`pyjnius`. e.g. `conda install -c conda-forge openjdk=21`, or use a system JDK and set `JAVA_HOME`.
 - **Data:** the three small WebShop catalog files are **already shipped**
   (`items_shuffle_1000.json`, `items_ins_v2_1000.json`, `items_human_ins.json`),
-  backing the `webshop.use_small: true` code path — so the default configs run with
+  backing the `webshop.use_small: true` code path, so the default configs run with
   **no WebShop download**. They are not in the top-level `data/` directory (which
   ships only a README); they live where the WebShop environment loads them from:
   `third_party/verl-agent/agent_system/environments/env_package/webshop/webshop/data/`.
   The full ~5.2 GB catalog (`items_shuffle.json` + `items_ins_v2.json`, used only by
-  `webshop.use_small: false`) is **not** auto-downloaded — fetch it manually from
+  `webshop.use_small: false`) is **not** auto-downloaded, fetch it manually from
   [princeton-nlp/WebShop](https://github.com/princeton-nlp/WebShop) into that same
   directory. (`bash download_data.sh` prints these exact instructions; it does not
   download the WebShop catalog itself.)
 - The `spacy` / `typer` version-conflict warning during install is **benign**
-  (noted upstream by verl-agent) — ignore it.
+  (noted upstream by verl-agent), ignore it.
 - **`flash-attn`** builds from source and `import`s `torch` at build time. If
   `pip install -r ...` fails on `flash_attn` with `ModuleNotFoundError: No module
   named 'torch'`, install it after torch with build isolation off:
@@ -62,7 +62,7 @@ alfworld-download -f
 
 Backbones are specified as **HuggingFace model ids** (e.g.
 `actor_rollout_ref.model.path: Qwen/Qwen2.5-1.5B-Instruct`), so they
-**auto-download** from the Hub on first run — no manual step for the default setup.
+**auto-download** from the Hub on first run, no manual step for the default setup.
 
 - **Cache / disk.** Models land in `~/.cache/huggingface` (override with `HF_HOME`).
   Budget roughly ~3 GB for Qwen2.5-1.5B up to ~15 GB for Qwen2.5-7B.
@@ -72,7 +72,7 @@ Backbones are specified as **HuggingFace model ids** (e.g.
   Qwen backbones are ungated.
 - **Offline / air-gapped clusters** (compute nodes without internet). Pre-fetch on a
   login node (`huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct`), then set
-  `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` on the compute nodes — or point
+  `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` on the compute nodes, or point
   `actor_rollout_ref.model.path` / `tokenizer_path` at a local snapshot directory.
 
 ## Path configuration (both envs)
@@ -86,7 +86,7 @@ $EDITOR config/paths.yaml      # set project_root, data dirs, ...
 
 ## Running
 
-`reproduce.sh` / `evaluate.sh` must run **inside the matching env** — activate
+`reproduce.sh` / `evaluate.sh` must run **inside the matching env**: activate
 `fedagent-webshop` for WebShop, `fedagent-alfworld` for ALFWorld:
 
 ```bash
@@ -99,7 +99,7 @@ bash reproduce.sh alfworld-main
 
 ## Reference
 
-The underlying environment packages (and the other verl-agent benchmarks — Sokoban,
+The underlying environment packages (and the other verl-agent benchmarks, Sokoban,
 Gym Cards, AppWorld) are documented in the vendored
 [`third_party/verl-agent/README.md`](../third_party/verl-agent/README.md).
 

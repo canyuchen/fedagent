@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# reproduce.sh — one-command reproduction entry point for FedAgent.
+# reproduce.sh: one-command reproduction entry point for FedAgent.
 #
-# This is the single command the README's Quickstart points at. It resolves a
+# This is the entry point the README's 'Reproducing the paper' section uses. It resolves a
 # named experiment to its canonical config, applies the requested hardware /
 # parallelism overrides, and launches the federated runner.
 #

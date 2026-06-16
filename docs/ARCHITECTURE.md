@@ -4,11 +4,11 @@ FedAgent **extends** the vendored
 [verl-agent](https://github.com/langfengQ/verl-agent) training framework rather
 than wrapping it, so first-party code lives in **two layers**:
 
-1. **Control plane** — FedAgent's own federated orchestration, at the repository
+1. **Control plane**: FedAgent's own federated orchestration, at the repository
    top level. It drives training: shards data/environments per client, spawns
    per-client verl-agent runs, aggregates the resulting models, and advances
    rounds.
-2. **In-framework hooks** — FedAgent's algorithm woven into verl-agent's
+2. **In-framework hooks**: FedAgent's algorithm woven into verl-agent's
    extension points. These files live *inside* `third_party/verl-agent/` because
    they are imported by (and run as part of) the vendored package: the partition
    strategies are imported by the environment package, and the federated trainer
@@ -66,11 +66,11 @@ fedagent/
     └── ...                           unmodified upstream (veRL, verl-agent, WebShop, ALFWorld)
 ```
 
-## Layer 1 — Control plane (first-party, top level)
+## Layer 1, Control plane (first-party, top level)
 
 | Path | Role |
 |---|---|
-| `core/custom_fed_server.py` | Federated server entry point — drives the whole round loop. |
+| `core/custom_fed_server.py` | Federated server entry point, drives the whole round loop. |
 | `core/fed/round_orchestrator.py` | Per-round scheduling: select clients, launch, collect, aggregate. |
 | `core/fed/script_builder.py` | Renders each client's verl-agent launch script (env vars, partition kwargs, resume paths). |
 | `core/fed/client_runner.py` | Launches and supervises a single client's training subprocess. |
@@ -88,14 +88,14 @@ fedagent/
 | `tests/heterogenous/` | Partition-strategy simulations and a federated-sharding smoke test. |
 | `config/`, `docs/` | Curated experiment configs (W&B stripped) and user documentation. |
 
-## Layer 2 — In-framework hooks (first-party, inside `third_party/verl-agent/`)
+## Layer 2, In-framework hooks (first-party, inside `third_party/verl-agent/`)
 
 | Path (under `third_party/verl-agent/`) | Role | Why it lives here |
 |---|---|---|
-| `agent_system/environments/partition_strategy.py` | **The core contribution** — all client data-partition strategies (task-level: preference / coverage / hardness) and the environment-level heterogeneity constructions. | Imported by the env package (`webshop/envs.py`, `alfworld/alfred_tw_env.py`) and by `fed_env_manager.py`. |
-| `agent_system/environments/fed_env_manager.py` | Federated environment managers — wire per-client task partitions and env variants into the rollout loop. | Part of the env-manager dispatch. |
+| `agent_system/environments/partition_strategy.py` | **The core contribution**: all client data-partition strategies (task-level: preference / coverage / hardness) and the environment-level heterogeneity constructions. | Imported by the env package (`webshop/envs.py`, `alfworld/alfred_tw_env.py`) and by `fed_env_manager.py`. |
+| `agent_system/environments/fed_env_manager.py` | Federated environment managers, wire per-client task partitions and env variants into the rollout loop. | Part of the env-manager dispatch. |
 | `verl/trainer/main_ppo_fed.py` | Federated PPO/GRPO entry point (federated counterpart of upstream `main_ppo.py`). | Must run as `python -m verl.trainer.main_ppo_fed`. |
-| `verl/trainer/ppo/ray_trainer_fed.py` | Ray federated trainer — client-local updates plus server-side aggregation. | Imports verl trainer internals. |
+| `verl/trainer/ppo/ray_trainer_fed.py` | Ray federated trainer, client-local updates plus server-side aggregation. | Imports verl trainer internals. |
 | `verl/utils/checkpoint/fsdp_checkpoint_manager_fed.py`, `verl/utils/tracking_fed.py` | Federated checkpoint manager and per-round / per-client tracking. | Plug into verl's checkpoint / tracking. |
 | *edits to upstream env files* (`webshop/envs.py`, `alfworld/alfred_tw_env.py`, `webshop/.../engine.py`, `env_manager.py`, …) | Additive FedAgent hooks where the data/training plane needs them. | See CHANGES.md for the precise list. |
 
@@ -106,6 +106,6 @@ fedagent/
 be importable as `verl.trainer.main_ppo_fed`. Relocating these to a top-level
 package would require editing more upstream files (increasing divergence from the
 vendored source) and risks the tight env/trainer integration. Keeping them in
-place — beside the upstream originals, with the `*_fed` convention and this map —
+place, beside the upstream originals, with the `*_fed` convention and this map,
 preserves a clean, minimally-divergent vendor copy while still making *what is
 ours* explicit.

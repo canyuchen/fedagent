@@ -54,9 +54,9 @@ alongside that source.
 -------------------------------------------------------------------------------
    data/env_heterogeneity/ ships small data files derived from the WebShop and
    ALFWorld benchmark data (items 3-4 above, both MIT):
-   - lookalike_data/*.json and holdout_webshop_v1.json — synthesized from WebShop's
+   - lookalike_data/*.json and holdout_webshop_v1.json, synthesized from WebShop's
      items_shuffle_1000.json / items_ins_v2_1000.json product data.
-   - holdout_alfworld_v1.json — derived from the ALFWorld game data.
+   - holdout_alfworld_v1.json, derived from the ALFWorld game data.
    These derived files are distributed under the same MIT terms as their source
    benchmark data, whose LICENSE texts are preserved in the vendored copies under
    third_party/verl-agent/.../env_package/{webshop,alfworld}/.

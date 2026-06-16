@@ -1,7 +1,7 @@
 # Data
 
 The WebShop and ALFWorld environment data are **not** bundled with this
-repository — they are public but large (the full WebShop catalog alone is
+repository, they are public but large (the full WebShop catalog alone is
 ~5.2 GB). Fetch them with the top-level downloader:
 
 ```bash
@@ -21,16 +21,16 @@ game cache are only required for full-scale runs and are gitignored.
 
 **Bundled env-heterogeneity data (`env_heterogeneity/`).** Small, derived data
 files used by the *environment-level* heterogeneity experiments are committed here
-(they are inputs, not run configs — the run configs live under
+(they are inputs, not run configs, the run configs live under
 `config/env_heterogeneity/`):
 
-- `lookalike_data/lookalike_v_{price,color,size,price_color}.json` — pre-synthesized
+- `lookalike_data/lookalike_v_{price,color,size,price_color}.json`, pre-synthesized
   lookalike / distractor product pools injected by the `lookalike_injection*` runs.
-- `holdout_{webshop,alfworld}_v1.json` — env-level OOD holdout sets for the
+- `holdout_{webshop,alfworld}_v1.json`, env-level OOD holdout sets for the
   `catalog_split` / scene-disjoint runs (regenerate with
   `tools/env_heterogeneity/gen_holdout_{webshop,alfworld}.py`).
 
-These are **derived from the WebShop and ALFWorld benchmark data (both MIT)** — see
+These are **derived from the WebShop and ALFWorld benchmark data (both MIT)**: see
 [`../NOTICE`](../NOTICE) for attribution.
 
 > TODO(author): confirm the final on-disk location each downloaded artifact must
