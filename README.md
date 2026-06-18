@@ -34,17 +34,17 @@
 
 ## Overview
 
-FedAgent is a library for federated RL training of LLM agents.
-It implements a federated training server with FedAvg/FedProx aggregation,
-a two-level heterogeneity suite (task vs environment partitioning), and
-federated PPO/GRPO trainers built on
+FedAgent is a library for **federated RL training of LLM agents**.
+It implements a federated training server with **FedAvg/FedProx** aggregation,
+a **two-level heterogeneity suite** (task vs environment partitioning), and
+federated **PPO/GRPO** trainers built on
 [verl-agent](https://github.com/langfengQ/verl-agent).
 You can reproduce the paper's experiments or extend the framework with your own
 datasets, environments, and algorithms.
 
 FedAgent is also the reference implementation for the paper, which formalizes
 agent heterogeneity at two structurally distinct levels (task vs environment)
-and derives an asymmetric robustness result: federated training is robust to
+and derives an **asymmetric robustness** result: federated training is robust to
 task-level heterogeneity but worst-case non-robust to environment-level
 heterogeneity. See [`docs/heterogeneity.md`](docs/heterogeneity.md) for
 the full construction.
@@ -53,18 +53,24 @@ the full construction.
 
 ## Key Features
 
-- Federated **PPO** and **GRPO** trainers, drop-in counterparts of the verl-agent trainers
-- **Two-level heterogeneity suite**: task-level (Preference / Coverage / Hardness)
-  and environment-level (5 WebShop transition variants)
-- **FedAvg** and **FedProx** aggregation, pluggable for custom strategies
+- **Federated PPO and GRPO trainers** — drop-in federated counterparts of the
+  verl-agent trainers; swap one config to go from single-client to federated
+- **Two-level heterogeneity suite** — task-level (Preference / Coverage /
+  Hardness) and environment-level (5 WebShop transition variants), the first
+  systematic decomposition for agent FL
+- **FedAvg / FedProx aggregation** with FSDP-sharded model support, pluggable
+  for custom strategies
 - Fully configurable federation protocol (clients `N`, clients/round `M`,
   local epochs `E`, rounds `T`, tasks/client `|Xᵢ|`) with ready-made sweeps
-- Any HuggingFace backbone (paper uses Qwen2.5-1.5B/3B/7B-Instruct, Llama-3.2-3B-Instruct)
-- WebShop and ALFWorld benchmarks (verl-agent also bundles Sokoban / GymCards / AppWorld)
+- Any HuggingFace backbone (paper uses Qwen2.5-1.5B/3B/7B-Instruct,
+  Llama-3.2-3B-Instruct); WebShop and ALFWorld benchmarks out of the box
 - FSDP sharding, single-GPU to multi-node, SLURM / torchrun launch paths
 
-See [`docs/features.md`](docs/features.md) for a detailed walkthrough of each
-feature, including config keys and implementation files.
+Clients can run **serially** or **in parallel** across GPUs; the library is
+W&B-free (metrics go to JSON / console) and exposes extension points for new
+datasets, environments, heterogeneity strategies, and aggregation rules
+(see [`docs/extending.md`](docs/extending.md)).
+Full details in [`docs/features.md`](docs/features.md).
 
 ---
 
