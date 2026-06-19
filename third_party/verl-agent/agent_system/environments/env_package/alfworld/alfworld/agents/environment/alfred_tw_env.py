@@ -144,8 +144,19 @@ class AlfredTWEnv(object):
         if self.train_eval == "train":
             data_path = os.path.expandvars(self.config['dataset']['data_path'])
         elif self.train_eval == "eval_in_distribution" and self.start_idx is not None and self.end_idx is not None:
-            data_path = os.path.expandvars(self.config['dataset']['data_path'])
-            print(f"Using start_idx and end_idx for eval_in_distribution")
+            # start_idx/end_idx slice a contiguous window of game_files (see the eval
+            # branch below). By default that window is over the TRAIN games (used by
+            # eval/batch_alfworld_eval.sh SPLIT=train to collect hardness trajectories
+            # over the whole training split). Set ALFWORLD_VAL_WINDOW=1 to window the
+            # held-out valid_seen split instead, so the validation set can be covered
+            # in contiguous batches (SPLIT=val batched eval). This flag is inert unless
+            # explicitly set, so normal training/eval is unaffected.
+            if os.getenv('ALFWORLD_VAL_WINDOW', '0') == '1':
+                data_path = os.path.expandvars(self.config['dataset']['eval_id_data_path'])
+                print(f"Using start_idx/end_idx to window the held-out valid_seen split")
+            else:
+                data_path = os.path.expandvars(self.config['dataset']['data_path'])
+                print(f"Using start_idx and end_idx for eval_in_distribution (TRAIN games)")
         elif self.train_eval == "eval_in_distribution":
             data_path = os.path.expandvars(self.config['dataset']['eval_id_data_path'])
         elif self.train_eval == "eval_out_of_distribution":

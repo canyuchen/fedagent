@@ -17,7 +17,14 @@ print(conf$1)
 project_root=$(read_yaml_path "['project_root']")
 verl_agent_repo=$(read_yaml_path "['repo']['verl_agent']")
 
-train_data_size=32 # match GRPO and GiGPO configuration (16 x 8)
+# PPO has no GRPO/GiGPO group dimension (no rollout group_size), so train_data_size
+# alone sets the number of trajectories collected per iteration. The "16 x 8" tag is
+# an inherited reference to the upstream verl-agent GiGPO config (train_data_size=16 x
+# group_size=8 = 128 rollouts). NOTE: that math does NOT match the 32 set here, and it
+# also does not match this repo's GRPO WebShop script (train_data_size=8 x group_size=8
+# = 64). Treat 32 as a WebShop-specific PPO budget; the "(16 x 8)" note is stale and
+# should be corrected to the intended target (confirm with the maintainer).
+train_data_size=32
 val_data_size=64
 
 

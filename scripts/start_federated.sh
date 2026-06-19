@@ -1,5 +1,10 @@
 #!/bin/bash
-# Launch federated learning training (FedAgent custom server).
+# Launch one federated-learning training run (the FedAgent server in
+# core/custom_fed_server.py). The server drives FedAvg-style training: it spawns
+# one local-RL training subprocess per client per round and then aggregates the
+# resulting model weights into the next round's global model. This script is the
+# low-level per-run launcher; tools/run_federated.py (via
+# scripts/smart_federated_runner.sh) is the higher-level orchestrator that calls it.
 #
 # Runs WITHOUT SLURM by default: simply execute it directly, e.g.
 #   bash scripts/start_federated.sh --verl-config <NAME>
@@ -87,6 +92,12 @@ else
         usage
         exit 1
     fi
+    # --verl-config names a top-level training config; config/paths.yaml supplies
+    # the config root and output root, and tools/resolve_paths.py joins them with
+    # the name (<config.root>/<NAME>.yaml) and derives OUTPUT_DIR under <output.root>.
+    # That resolver is the single source of truth so this launcher and
+    # run_federated.py agree; it prints shell `NAME=value` assignment lines
+    # (CONFIG_FILE, OUTPUT_DIR, META_INFO, ...) that we eval below.
     resolver_args=(--verl-config "$VERL_CONFIG")
     [ "$NO_TIMESTAMP" = true ] && resolver_args+=(--no-timestamp)
     [ -n "$TIMESTAMP" ] && resolver_args+=(--timestamp "$TIMESTAMP")

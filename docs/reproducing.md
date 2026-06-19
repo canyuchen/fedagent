@@ -267,13 +267,22 @@ Each leaf holds the **6 sweep configs**: the two endpoints of each sub-type:
 | Sub-type | Code strategy | Filename token | Endpoints (low → high heterogeneity) |
 |---|---|---|---|
 | **Preference** | `preference` | `p-preference_omega-*` | `omega = 0.01` (near-uniform) → `omega = 0.99` (extreme) |
-| **Coverage** | `coverage` | `p-coverage_std-*` | `size_std = 256` (high spread) → `size_std = 1` (near-equal) |
-| **Hardness** | `hardness` | `p-hardness_success_std-*` | `success_std = 256` (high spread) → `success_std = 1` (near-equal) |
+| **Coverage** | `coverage` | `p-coverage_std-*` | `size_std = 256` (near-uniform) → `size_std = 1` (extreme) |
+| **Hardness** | `hardness` | `p-hardness_success_std-*` | `success_std = 256` (near-uniform) → `success_std = 1` (extreme) |
 
-> **Naming caveat.** *Preference* is called three things across the stack: the
-> code dispatch strategy is `preference`, the paper calls it **Preference**, and
-> the filename token is `preference`. They are the same axis. (`hardness` keeps
-> its historical spelling.) See [`heterogeneity.md`](heterogeneity.md).
+> **Naming caveat (the one real collision).** The dispatch strategy, the paper
+> name, and the filename token all agree at the word level (`preference` /
+> **Preference**, `coverage` / **Coverage**, `hardness` / **Hardness** -- the code
+> just lowercases the paper's title-case term; `hardness` is the lowercased
+> *Hardness*, not a misspelling). The actual hazard is the **Preference knob's
+> symbol**: filenames and configs use `omega` (env var `OMEGA`; e.g.
+> `p-preference_omega-0.99`), but the codebase still accepts a **legacy alias
+> `tau`/`TAU`** for the same knob (in `partition_strategy.py`, `omega` defaults to
+> `tau` when `omega` is unset). Do **not** confuse that legacy `tau` with the
+> paper's symbol $\tau$, which denotes the *task descriptor* (an unrelated
+> concept: the observable, prompt-visible task identity), not the Dirichlet
+> spread. Prefer `omega` everywhere; treat `tau` as deprecated. See
+> [`heterogeneity.md`](heterogeneity.md).
 
 ### Run
 

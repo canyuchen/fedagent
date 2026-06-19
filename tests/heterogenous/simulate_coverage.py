@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """
 Coverage Partition Strategy Simulation
-Tests the effect of different size_std values on coverage partitioning.
-Supports multiple datasets: webshop (6410 samples) and alfworld (3553 samples).
+
+Sweeps the coverage-heterogeneity knob to visualise how per-client pool
+sizes spread out (CoveragePartition).
+
+NAMING: the paper controls Coverage via the symbol xi (a Beta concentration;
+LARGER xi = LOWER variance = MORE UNIFORM). Despite its name, the config key
+'size_std' is NOT a standard deviation -- it IS that Beta concentration and
+maps to xi DIRECTLY (same value, same direction): large size_std == large xi
+== near-uniform, small size_std == small xi == EXTREME heterogeneity. Paper
+sweep endpoints: size_std=256 (xi=256, near-uniform) and size_std=1 (xi=1,
+extreme). 'size_std' is the runtime config key, passed down as
+coverage_partition(dispersion_s=size_std).
+
+Supports multiple datasets: webshop (~6410 train samples) and alfworld
+(3553 samples).
 """
 
 import numpy as np
@@ -94,7 +107,13 @@ def simulate_coverage_partition(
         data: Synthetic data
         client_num: Number of clients
         min_samples_per_client: Minimum samples per client
-        size_std_values: List of size_std values to test
+        size_std_values: List of coverage-heterogeneity values to sweep.
+            'size_std' is misleadingly named: it is NOT a standard deviation
+            but the Beta concentration, i.e. the paper's Coverage symbol xi
+            DIRECTLY (large size_std -> large xi -> near-uniform; small
+            size_std -> extreme heterogeneity). Paper endpoints: 256
+            (near-uniform) and 1 (extreme). Passed through as
+            coverage_partition(dispersion_s=size_std).
         save_dir: Directory to save results
     """
     os.makedirs(save_dir, exist_ok=True)

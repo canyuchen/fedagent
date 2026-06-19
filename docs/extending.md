@@ -51,7 +51,10 @@ wired into the framework by two dispatch functions in the same directory:
   partition (see point 2).
 
 `sokoban/` is the cleanest reference package; `webshop/` is the most fully
-featured (it is the only one wired for env-level heterogeneity).
+featured (it is the only env wired for the **five-variant** env-level
+heterogeneity pipeline — Catalog Split / Field-Subset Index / BM25 Reweighting /
+Lookalike Injection / Rank Wrapper; see §2. ALFWorld also has env-level
+heterogeneity, but only via the single `env_disjoint` scene-disjoint strategy).
 
 ### The contract
 
@@ -276,6 +279,25 @@ becomes an `env_kwargs[...]` entry consumed by SimServer:
 | Lookalike Injection | `_lookalike_injection_partition_webshop` | `extra_products` | content + matching |
 | Rank Wrapper | `_rank_wrapper_partition_webshop` | `search_engine_variant` | rendering |
 
+> **Paper-variant ↔ runtime-key map (avoid two easy confusions).** The leftmost
+> column above is the *paper* variant name; the runtime YAML `strategy:` keys are
+> `catalog_split`, `bm25_variant`, `bm25_variant`, `lookalike_injection`,
+> `rank_wrapper` respectively. Two snags:
+> - **One key, two variants.** *Field-Subset Index* (V2, Stage 2) and *BM25
+>   Reweighting* (V3, Stage 3) share the **same** dispatch key `bm25_variant` and
+>   the same helper `_bm25_variant_partition_webshop`; they are told apart only by
+>   the `BM25_VARIANT_POOL` env var (`fields_only` selects Field-Subset Index;
+>   unset/`default` selects BM25 Reweighting with extreme `k1,b`).
+> - **`v4`/`v5` are NOT paper Variants 4/5.** The `_v5` suffix on
+>   `_distractor_disjoint_partition_webshop_v5` is an *implementation-iteration*
+>   number: `v4` = the older `_distractor_disjoint_partition_webshop` (key
+>   `distractor_disjoint`, legacy/superseded, all clients share `goals[500:]`);
+>   `v5` = the current function (key `catalog_split`, per-client target floor,
+>   uniform 100/client). **Both implement the one paper Variant 1 (Catalog
+>   Split)** and are unrelated to paper Variant 4 (Lookalike Injection) or Variant
+>   5 (Rank Wrapper). Only `catalog_split`/v5 backs the reported Catalog Split
+>   numbers.
+
 These share a fixed shape: assignment is **deterministic by `client_id`**
 (`np.random.RandomState(base_seed + client_id)`) so FedAvg sees the same
 per-client variant every round, and the **validation env is left unperturbed**
@@ -287,13 +309,31 @@ the existing ones, add an `elif` branch in the WebShop block of `fed_make_envs`
 that calls it and threads the result into `env_kwargs`, and make sure SimServer
 knows how to consume the new key.
 
-> **Naming caveat (read this).** The same construct is named differently across
-> the stack: **code** `preference` = **paper** *Preference* = **config filename**
-> `preference`. The dispatch key in YAML is the *code* name (`preference`), the
-> filename token is `preference`. See [`docs/heterogeneity.md`](heterogeneity.md)
-> for the full taxonomy, the two-level rationale (task-level enters via the
-> prompt and is robust; env-level enters via the transition kernel and is
-> worst-case non-robust), and the variant ↔ pipeline-stage mapping.
+> **Naming caveat (read this).** The task-level *dispatch keys* already match
+> the paper at the key level (`preference` = paper *Preference*, `coverage` =
+> *Coverage*, `hardness` = *Hardness* — `hardness` is the lowercased paper term,
+> not a typo). The two places the names genuinely diverge, and can mislead, are
+> the *knob parameters*:
+>
+> 1. **`omega` vs `tau` (a real symbol collision).** Preference's Dirichlet knob
+>    is `omega` (paper symbol ω). Legacy configs and the `TAU`/`+data.tau` env
+>    var are a back-compat *alias for the same knob* (`core/fed/script_builder.py`
+>    falls back `kwargs.get('omega', kwargs.get('tau'))`). Beware: the paper's
+>    symbol `tau` (τ) is the unrelated **task descriptor**, NOT the preference
+>    knob — so the legacy code name `tau` collides with a different paper concept.
+>    Prefer `omega` everywhere.
+> 2. **`size_std`/`success_std` are misleadingly named — they are not standard
+>    deviations.** Coverage's `size_std` and Hardness's `success_std` are the Beta
+>    *concentration*, i.e. they **equal** the paper symbols ξ (Coverage) and ξ'
+>    (Hardness) directly: a *larger* value means *lower* cross-client variance =
+>    *more uniform* (high `size_std` ≈ high ξ ≈ near-uniform; low ≈ extreme).
+>    Endpoints in code (matching the paper): `omega ∈ {0.01 near-uniform, 0.99
+>    extreme}`, `size_std`/`success_std ∈ {256 near-uniform, 1 extreme}`.
+>
+> See [`docs/heterogeneity.md`](heterogeneity.md) for the full taxonomy, the
+> two-level rationale (task-level enters via the prompt and is robust; env-level
+> enters via the transition kernel and is worst-case non-robust), and the
+> variant ↔ pipeline-stage mapping.
 
 ---
 
@@ -452,7 +492,9 @@ model it on).
   reference. W&B has been removed from the public release; metrics are written
   under `output/`.
 - Cross-references: [`docs/heterogeneity.md`](heterogeneity.md) (the two-level
-  taxonomy and the `preference`/`preference` naming caveat),
+  taxonomy and the knob-naming caveats: `omega` vs the legacy `tau` alias — which
+  collides with the paper's task-descriptor τ — and `size_std`/`success_std`,
+  which despite their names equal the paper's Beta-concentration ξ/ξ' directly),
   [`docs/installation.md`](installation.md) (the two conda environments),
   [`docs/reproducing.md`](reproducing.md) (config-group → paper-artifact
   mapping).

@@ -44,9 +44,22 @@ class RoundOrchestrator:
 
     # ------------------------------------------------------------------ selection
     def select_clients(self, round_num: int) -> List[int]:
-        """Select the clients that participate in this round."""
+        """Select the clients that participate in this round.
+
+        Two strategies:
+          - 'uniform_single': the paper's "Local Agent Training" baseline. The same
+            single client (config kwargs.cl_id, e.g. paper indices 21/42/84) is
+            selected every round, modelling one client training alone with no
+            federation/aggregation.
+          - any other strategy (uniform, preference, coverage, hardness, the
+            env-level keys, etc.): sample M = clients_per_round clients without
+            replacement, seeded deterministically per round (base_seed + round_num
+            - 1) so the same clients are re-selected on resume.
+        """
         strategy = self.config['federated']['data_sharding']['partition']['strategy']
 
+        # 'uniform_single' == paper "Local Agent Training" baseline: pin the same
+        # single client (cl_id) for every round (no random sampling, no federation).
         if strategy == 'uniform_single':
             cl_id = self.config['federated']['data_sharding']['partition']['kwargs']['cl_id']
             selected = [cl_id]
@@ -160,7 +173,12 @@ class RoundOrchestrator:
                                        ) -> List[Dict[str, Any]]:
         """Run client training sequentially (one client per GPU at a time).
 
-        NOTE: had no external caller at the time of the Phase 2 refactor; kept for reuse.
+        NOTE: This is a self-contained, fully-serial fallback path. The live
+        training path used by FederatedServer is run_smart_parallel_client_training
+        (see core/custom_fed_server.py), which shares GPUs across clients and only
+        falls back to sequential execution per-GPU. This method currently has no
+        caller; it is kept for reuse (e.g. debugging or single-GPU runs that want
+        strictly one client at a time).
         """
         client_results = []
         available_gpus = self.get_available_gpus()

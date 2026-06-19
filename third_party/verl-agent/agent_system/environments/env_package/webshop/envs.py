@@ -226,20 +226,32 @@ class WebshopMultiProcessEnv(gym.Env):
                 self.goal_idxs = total_val_goals
                 
                 if self.client_id is not None and self.client_num is not None:
-                    print(f"[Federated WebShop VAL - Special Infer] Client {client_id}/{client_num}: "
-                        f"Using special validation goals {start_idx}-{end_idx-1} (total: {len(total_val_goals)} val goals) - NO SHARDING")
+                    print(f"[WebShop infer_special] Client {client_id}/{client_num}: "
+                        f"rolling out TRAINING-pool goals {start_idx}-{end_idx-1} (idx 500+ = train; for trajectory collection, NOT held-out validation) - NO SHARDING")
                 else:
-                    print(f"[Standard WebShop VAL - Special Infer] Using special validation goals {start_idx}-{end_idx-1} (total: {len(total_val_goals)} val goals)")
+                    print(f"[WebShop infer_special] rolling out TRAINING-pool goals {start_idx}-{end_idx-1} (idx 500+ = train; for trajectory collection, NOT held-out validation)")
             else:
-                # Standard validation set: indices 0-499
-                total_val_goals = list(range(self.val_batch_size))  # Use the val_batch_size passed in by the caller
+                # Standard validation set: the held-out pool goals[0:500].
+                if self.start_idx is not None and self.end_idx is not None:
+                    # Windowed held-out val (NO +500 offset, unlike infer_special):
+                    # evaluate goals[start:end] WITHIN the val pool [0:500], so the
+                    # full validation set can be covered in contiguous batches,
+                    # symmetric with the training-pool batching above. start/end must
+                    # lie in [0, 500]. This branch is inert during normal
+                    # training/eval (start_idx/end_idx default to None there); it is
+                    # only exercised by eval/batch_webshop_eval.sh SPLIT=val.
+                    total_val_goals = list(range(self.start_idx, self.end_idx))
+                else:
+                    # Full held-out pool (val_batch_size defaults to 500).
+                    total_val_goals = list(range(self.val_batch_size))
                 self.goal_idxs = total_val_goals
-                
+                _idx_lo = total_val_goals[0] if total_val_goals else 'NA'
+                _idx_hi = total_val_goals[-1] if total_val_goals else 'NA'
                 if self.client_id is not None and self.client_num is not None:
                     print(f"[Federated WebShop VAL] Client {client_id}/{client_num}: "
-                        f"Using all validation goals (total: {len(total_val_goals)} val goals) - NO SHARDING")
+                        f"Using {len(total_val_goals)} validation goals (idx {_idx_lo}..{_idx_hi}) - NO SHARDING")
                 else:
-                    print(f"[Standard WebShop VAL] Using all {len(total_val_goals)} validation goals")
+                    print(f"[Standard WebShop VAL] Using {len(total_val_goals)} validation goals (idx {_idx_lo}..{_idx_hi})")
         else:
             # The training set is sharded per client, guaranteeing each client gets at least the specified number of goals
             if self.client_id is not None and self.client_num is not None:
@@ -471,10 +483,14 @@ class WebshopMultiProcessEnv(gym.Env):
                           f"total {len(self.goal_idxs)} train goals (all clients share). "
                           f"Heterogeneity is on catalog axis (see SimServer.catalog_filter_asins).")
                 elif self.partition_strategy == 'catalog_split':
-                    # Catalog-Split: per-client target floor distractor disjoint
+                    # PAPER VARIANT 1: Catalog Split (Environment-Level heterogeneity,
+                    # Stage 1 = content/catalog). code key 'catalog_split'.
                     # See docs/heterogeneity.md
                     # Both catalog (env axis) and goal_idxs (task axis) are computed in
                     # fed_env_manager.py via _distractor_disjoint_partition_webshop_v5.
+                    # (The '_v5' suffix is the partition function's IMPLEMENTATION-REVISION
+                    #  number, NOT the paper's Variant 5 / Rank Wrapper; v4 and v5 of this
+                    #  function both realize paper Variant 1, Catalog Split.)
                     #   - env_kwargs['catalog_filter_asins'] -> SimServer catalog filter
                     #   - env_kwargs['client_goal_idxs']     -> self.goal_idxs (uniform 100/client)
                     if 'client_goal_idxs' in self._env_kwargs and self._env_kwargs['client_goal_idxs']:

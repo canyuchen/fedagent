@@ -4,6 +4,20 @@ Federated Ray PPO Trainer - subclasses verl-agent's RayPPOTrainer.
 A thin subclass that inherits RayPPOTrainer and overrides only the methods
 needed to support federated learning (per-client parameter extraction,
 post-aggregation parameter updates, and federated checkpoint I/O).
+
+Naming note: "PPO" here is verl's umbrella name for its RL trainer, NOT the
+PPO optimizer specifically. RayPPOTrainer selects the algorithm via the
+advantage estimator, so the same class runs both GRPO (the paper's main-text
+default optimizer) and PPO (the paper's appendix optimizer). Server-side
+aggregation is FedAvg in both cases.
+
+Scope note: this module is the FederatedScope-based federated driver (its
+fit_federated/evaluate_federated/get_model_parameters hooks are called by an
+external FederatedScope client, and create_fed_ray_ppo_trainer below is the
+FederatedScope registration entry point). It is SEPARATE from the federated
+pipeline actually used to produce the paper's runs, which lives in
+verl/trainer/main_ppo_fed.py -> verl/trainer/ppo/ray_trainer_fed.py and drives
+per-round training through the standard trainer.fit() loop (no fit_federated).
 """
 
 import torch
@@ -31,6 +45,10 @@ class FedRayPPOTrainer(RayPPOTrainer):
 
         Args:
             client_id: The federated client ID.
+            round: The current federated round index (stored as
+                self.round_num and incremented at the end of each
+                fit_federated() call); None until the server assigns one.
+                Note: shadows the Python builtin `round`.
             **kwargs: Arguments forwarded to the parent RayPPOTrainer.
         """
         super().__init__(**kwargs)
@@ -371,7 +389,13 @@ class FedRayPPOTrainer(RayPPOTrainer):
             for i, worker in enumerate(worker_group.workers):
                 if hasattr(worker, update_method_name):
                     try:
-                        # First attempt: pass strict=False.
+                        # First attempt: call the worker's weight-setter with
+                        # strict=True, so the remote raises if the incoming
+                        # parameter dict does not exactly match the model's
+                        # state_dict (catches missing/extra keys after
+                        # FedAvg aggregation). If the remote method has no
+                        # `strict` parameter, the TypeError below triggers the
+                        # plain-signature fallback.
                         future = getattr(worker, update_method_name).remote(
                             params, strict=True
                         )
@@ -484,9 +508,14 @@ class FedRayPPOTrainer(RayPPOTrainer):
                 # `_total` fields.
                 processed_results = {}
 
-                # Assumed validation-set size; adjust to your setup (it can be
-                # read from the config or derived from the dataset).
-                val_total_samples = 1  # or fetch the real size from your dataset
+                # PLACEHOLDER: FederatedScope weights each client's reported
+                # metrics by an accompanying "<prefix>_total" sample count when
+                # it aggregates across clients, so every metric prefix must be
+                # paired with a "_total" entry (added below). This is hardcoded
+                # to 1, which makes the server treat all clients as equally
+                # weighted; replace with the true validation-set size (from the
+                # config or len(dataset)) if you need size-weighted aggregation.
+                val_total_samples = 1
 
                 for key, value in eval_results.items():
                     processed_results[key] = value
@@ -729,7 +758,11 @@ class FedRayPPOTrainer(RayPPOTrainer):
         print(f"[Fed Client {self.client_id}] Reset for round {self.round_num}")
 
 
-# Factory function used for FederatedScope registration.
+# Factory used to register this trainer with FederatedScope (the external,
+# optional federated-learning framework this module integrates with; it is not
+# vendored in this repo -- see core/extra_metrics.py for the guarded import).
+# FederatedScope instantiates one trainer per client by calling this factory
+# with the client's id and forwarding the verl RayPPOTrainer constructor kwargs.
 def create_fed_ray_ppo_trainer(client_id=0, **verl_kwargs):
     """
     Factory function that constructs a federated Ray PPO trainer.

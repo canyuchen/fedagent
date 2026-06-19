@@ -2,6 +2,10 @@
 # Evaluate a (trained) checkpoint on the ALFWorld environment and collect
 # per-episode trajectories.
 #
+# What it runs on: the held-out valid_seen split (eval_id_data_path). To collect
+# trajectories over the TRAINING games for the `hardness` partition, use
+# eval/batch_alfworld_eval.sh instead.
+#
 # Usage:
 #   bash eval/eval_alfworld.sh [ENGINE] [PRETRAINED_MODEL_PATH]
 #
@@ -35,7 +39,11 @@ project_root=$(read_yaml_path "['project_root']")
 verl_agent_repo=$(read_yaml_path "['repo']['verl_agent']")
 
 # Evaluation configuration.
-train_data_size=16 # match GRPO and GiGPO configuration (16 x 8)
+train_data_size=16 # Inference-only run (total_epochs=0): this only sizes the
+                   # placeholder train.parquet that data_preprocess.prepare emits
+                   # (it select()s this many rows). It is NOT a GRPO rollout group
+                   # size. The number of episodes actually evaluated is val_data_size
+                   # below.
 val_data_size=32
 
 # Pretrained model / checkpoint path. Override via the second positional

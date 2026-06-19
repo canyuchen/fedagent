@@ -108,27 +108,66 @@ class ScriptBuilder:
         strategy = self.config['federated']['data_sharding']['partition']['strategy']
         kwargs = self.config['federated']['data_sharding']['partition'].get('kwargs', {})
         if strategy == 'preference':
-            # New: Dirichlet PreferencePartition uses `omega`; legacy yamls used `tau`.
-            # Export both env vars so downstream (verl) can read whichever; partition_strategy.py
-            # treats them as aliases (omega takes precedence when both present).
+            # Preference Heterogeneity (task-level): Dirichlet PreferencePartition.
+            # The controlling knob is the paper symbol omega (yaml kwarg `omega`).
+            # `tau` here is a LEGACY ALIAS for that same omega knob -- it is NOT the
+            # paper's task descriptor tau (an unrelated concept); old yamls named the
+            # preference knob `tau` before it was renamed omega. We export BOTH env
+            # vars (OMEGA and TAU, set to the same value) so either spelling works
+            # downstream. fed_env_manager reads them with OMEGA taking precedence:
+            # `if OMEGA: kwargs['omega']=... elif TAU: kwargs['tau']=...` (mutually
+            # exclusive), and since we always export OMEGA the TAU fallback is for
+            # legacy launches that set only TAU. PreferencePartition then resolves
+            # `if omega is None: omega = tau` (partition_strategy.py).
             val = kwargs.get('omega', kwargs.get('tau'))
             if val is None:
                 raise KeyError("[script_builder] preference strategy needs kwargs.omega (or legacy kwargs.tau)")
             return f'export OMEGA="{val}"\nexport TAU="{val}"'
         if strategy == 'coverage':
+            # Coverage Heterogeneity (task-level), paper symbol xi. IMPORTANT: despite
+            # the name, `size_std` is NOT a standard deviation -- it is the Beta
+            # CONCENTRATION used to draw per-client pool sizes (partition_strategy.
+            # generate_client_sizes: alpha=mu*s, beta=(1-mu)*s, so the Beta variance
+            # mu(1-mu)/(s+1) DECREASES as s=size_std grows). It is therefore the
+            # paper's xi itself (same value, same direction): a LARGER size_std =
+            # LOWER cross-client variance = MORE UNIFORM. The sweep uses size_std=256
+            # (xi=256, near-uniform) and size_std=1 (xi=1, extreme) -- matching the
+            # paper, which sweeps xi from 256 (near-uniform) to 1 (extreme).
             return f'export SIZE_STD="{kwargs["size_std"]}"'
         if strategy == 'hardness':
+            # Hardness Heterogeneity (task-level), paper symbol xi' ('hardness' is the
+            # lowercased paper term, not a typo). Exactly like coverage's size_std,
+            # `success_std` is NOT a standard deviation but the Beta CONCENTRATION
+            # (== the paper's xi', same value and direction): a LARGER success_std =
+            # LOWER variance = MORE UNIFORM. Sweep: success_std=256 (xi'=256,
+            # near-uniform) and success_std=1 (xi'=1, extreme).
             return f'export SUCCESS_STD="{kwargs["success_std"]}"'
         if strategy == 'uniform_single':
             return f'export CL_ID="{kwargs["cl_id"]}"'
         if strategy in ('distractor_disjoint', 'catalog_split'):
-            # Env-level heterogeneity for WebShop
-            #   distractor_disjoint    -> v4 algo (full-target floor, all clients share goals[500:])
-            #   catalog_split -> v5 algo (per-client target floor, uniform 100/cl)
-            #     v5 also reads MIN_GOALS_PER_CLIENT (we still bridge the value
-            #     even when yaml's federated.data_sharding.min_goals_per_client is set,
-            #     because main_ppo_fed's hydra config doesn't include the federated block).
-            # See docs/heterogeneity.md
+            # Environment-level (transition-level) heterogeneity for WebShop. Both of
+            # these strategy keys implement the SAME paper construction -- Variant 1
+            # "Catalog Split" (Stage 1: content/catalog), which gives each client a
+            # disjoint product catalog. They differ only by which IMPLEMENTATION
+            # ITERATION of the partition function they call (the "v4"/"v5" below are
+            # internal code-revision numbers, NOT the paper's Variant 4/5):
+            #   distractor_disjoint -> _distractor_disjoint_partition_webshop
+            #       LEGACY/superseded impl. All clients share the same goal pool
+            #       goals[500:] (~6410 goals) and the catalog protects ALL ~415
+            #       training target ASINs (a "full-target floor"). Not a reported
+            #       paper result; kept only for backward compatibility.
+            #   catalog_split -> _distractor_disjoint_partition_webshop_v5
+            #       CURRENT impl used for the paper's Variant 1 results. Each client
+            #       gets its own ~100-goal slice (a "per-client target floor"), so the
+            #       catalog protects only THIS client's ~50-80 target ASINs; this
+            #       widens the catalog divergence between clients (stronger env_div
+            #       signal) while keeping the task partition uniform (100 goals/client).
+            #       This branch additionally exports MIN_GOALS_PER_CLIENT (see below):
+            #       the value comes from yaml federated.data_sharding.min_goals_per_client,
+            #       but main_ppo_fed launches Hydra with verl's ppo_trainer.yaml, which
+            #       has no `federated` block, so the partition code cannot read it from
+            #       the Hydra config -- we forward it through an env var instead.
+            # See docs/heterogeneity.md ("Environment-level heterogeneity").
             lines = [
                 f'export ENV_DIV="{kwargs.get("env_div", 0.7)}"',
                 f'export KEEP_RATIO="{kwargs.get("keep_ratio", 0.7)}"',
@@ -162,11 +201,16 @@ class ScriptBuilder:
                 lines.append(f'export WEBSHOP_SEARCH_RETURN_N="{kwargs["search_return_n"]}"')
             return '\n'.join(lines)
         if strategy == 'bm25_variant':
-            # Transition-level env heterogeneity (BM25 Reweighting / Field-Subset Index).
-            # See docs/heterogeneity.md (Task-level heterogeneity).
-            # `variant_pool` yaml kwarg picks between:
-            #   - default (omit / 'default'): BM25 Reweighting = extreme k1/b on full fields
-            #   - 'fields_only':              Field-Subset Index = field-subset variants only
+            # Environment-level (transition-level) heterogeneity for WebShop. One
+            # strategy key, `bm25_variant`, serves TWO paper variants depending on the
+            # `variant_pool` yaml kwarg; both perturb the BM25 search backend (expected
+            # Pattern C):
+            #   - default pool (omit / 'default') -> paper Variant 3 "BM25 Reweighting"
+            #     (Stage 3, matching): extreme BM25 k1/b corners on the full field set.
+            #   - 'fields_only'                   -> paper Variant 2 "Field-Subset Index"
+            #     (Stage 2, encoding): vary which catalog fields enter the BM25 document.
+            # The pool choice is forwarded as the BM25_VARIANT_POOL env var below.
+            # See docs/heterogeneity.md ("Environment-level heterogeneity").
             lines = [f'export N_VARIANTS="{kwargs.get("N", 4)}"']
             pool = kwargs.get('variant_pool')
             if pool:
@@ -175,14 +219,28 @@ class ScriptBuilder:
                 lines.append(f'export WEBSHOP_SEARCH_RETURN_N="{kwargs["search_return_n"]}"')
             return '\n'.join(lines)
         if strategy == 'rank_wrapper':
-            # Transition-level env heterogeneity (search-engine TYPE swap).
+            # Environment-level (transition-level) heterogeneity for WebShop =
+            # paper Variant 5 "Rank Wrapper" (Stage 4, rendering): each client wraps
+            # the search engine with a different result-ranking/presentation type
+            # (a per-client search_engine_variant), built on an InMemoryBM25 base and
+            # leaving the product catalog unfiltered. Expected Pattern D (GRPO) / C (PPO).
+            # See docs/heterogeneity.md ("Environment-level heterogeneity").
             lines = [f'export N_VARIANTS="{kwargs.get("N", 4)}"']
             if kwargs.get('search_return_n'):
                 lines.append(f'export WEBSHOP_SEARCH_RETURN_N="{kwargs["search_return_n"]}"')
             return '\n'.join(lines)
         if strategy == 'lookalike_injection':
-            # Transition-level env heterogeneity (Lookalike Injection).
-            # See docs/heterogeneity.md
+            # Environment-level (transition-level) heterogeneity for WebShop =
+            # paper Variant 4 "Lookalike Injection" (joint Stages 1+3 = content +
+            # matching, NOT Stage 4): each client is deterministically assigned one of
+            # N attribute-attack look-alike sets (price / color / ...). Those products
+            # (extra_products) are appended to the base 1000-product catalog before
+            # BM25 indexing, so the agent must specifically check that attribute to
+            # filter out the fakes -- different variants force structurally different
+            # attribute-checking policies. This is the STRONGEST perturbation in the
+            # paper (expected Pattern D under GRPO, C under PPO). Note the default pool
+            # size N=2 here (vs N=4 for the other env variants).
+            # See docs/heterogeneity.md ("Environment-level heterogeneity").
             lines = [
                 f'export N_VARIANTS="{kwargs.get("N", 2)}"',
                 # PROJECT_ROOT lets partition_strategy resolve relative lookalike file paths.
@@ -416,7 +474,12 @@ export PARTITION_STRATEGY="{actual_strategy}"
     def _build_partition_config(self, strategy: str) -> str:
         kwargs = self.config['federated']['data_sharding']['partition'].get('kwargs', {})
         if strategy == 'preference':
-            # Dirichlet uses omega; legacy used tau. Pass via +data.tau (alias).
+            # Preference Heterogeneity (task-level), Dirichlet PreferencePartition.
+            # The knob is the paper symbol omega (legacy yamls spelled it `tau`; that
+            # legacy `tau` is the OLD preference-knob name, NOT the paper's task
+            # descriptor tau). The Hydra CLI flag emitted here is still literally named
+            # `+data.tau`, which fed_env_manager/PreferencePartition read as the
+            # omega alias -- so the omega value is passed through under the tau key.
             val = kwargs.get('omega', kwargs.get('tau'))
             if val is None:
                 raise KeyError("[script_builder] preference strategy needs kwargs.omega (or legacy kwargs.tau)")

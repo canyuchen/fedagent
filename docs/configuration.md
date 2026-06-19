@@ -77,11 +77,21 @@ heterogeneity doc):
 | `p-lookalike_injection_N-<n>` | `lookalike_injection` | `N`, `search_return_n` | Lookalike Injection (env, content+matching) |
 | `p-rank_wrapper_N-<n>` | `rank_wrapper` | `N`, `search_return_n` | Rank Wrapper (env, rendering) |
 
-> **⚠️ Naming caveat (Preference).** Preference heterogeneity is spelled three
-> ways across the stack: the **code/strategy** key is `preference`, the **paper**
-> calls it *Preference*, and the **filename** uses `preference`. So
-> `..._p-preference_omega-0.99.yaml` contains `strategy: "preference"` with
-> `kwargs.omega: 0.99`. This is the single most common point of confusion; see
+> **⚠️ Naming caveat (Preference: the `omega` vs. legacy `tau` knob).** The
+> *strategy* key is consistent everywhere, `preference` in the code, the paper
+> (*Preference*), and the filename, so a config reads
+> `..._p-preference_omega-0.99.yaml` with `strategy: "preference"` and
+> `kwargs.omega: 0.99`. The genuine source of confusion is the **hyperparameter
+> name**, not the strategy name. The preference knob is `omega` (the Dirichlet
+> spread/skew parameter $\omega$; the concentration is $\alpha = \pi\,(1-\omega)/\omega$,
+> so larger $\omega$ means *more* heterogeneity), but older configs pass a kwarg
+> called `tau`, which the preference partition aliases to `omega` when `omega` is
+> absent (`omega` wins if both are present; see `partition_strategy.py`, where the
+> per-backend helpers `_preference_partition_generic` / `_preference_partition_alfworld`
+> apply `omega = tau`). Two things to keep straight: (1) prefer `omega` in new
+> configs, `tau` only survives for backward compatibility; (2) this code `tau` is
+> **unrelated** to the paper's symbol $\tau$, which denotes the *task descriptor*
+> (the observable task input), not the preference-skew knob. See
 > [`docs/heterogeneity.md`](heterogeneity.md#task-level-heterogeneity-axis-1).
 
 > **Note (Field-Subset vs. BM25 Reweighting).** Both Field-Subset Index
@@ -101,7 +111,7 @@ an extreme endpoint, visible directly in the filenames:
 | Axis | Near-uniform | Extreme |
 |---|---|---|
 | Preference | `omega-0.01` | `omega-0.99` |
-| Coverage | `std-256` (large support spread → near-uniform) | `std-1` (tight → skewed) |
+| Coverage | `std-256` (high Beta concentration → near-uniform) | `std-1` (low concentration → skewed) |
 | Hardness | `success_std-256` | `success_std-1` |
 
 For the env-heterogeneity figure, the `catalog_split` directory sweeps `env_div ∈
@@ -121,7 +131,7 @@ federation settings (under `config/uniform/<model>/`):
 |---|---|---|---|
 | **FedAgent** | `main/` | `total-100_cl-per-rd-2_rd-70_ep-per-cl-3` | 100 clients, federated |
 | **Centralized** | `centralized/` | `total-1_cl-per-rd-1_rd-1_ep-per-cl-210` | 1 client, 1 round, all 210 epochs at once (no aggregation) |
-| **Local** | `local_client{1,2,3}/` | `total-100_cl-per-rd-1_rd-1_ep-per-cl-210` | a single client trains alone for 210 epochs (paper indices 21/42/84 correspond to the per-client data budgets) |
+| **Local** | `local_client{1,2,3}/` | `total-100_cl-per-rd-1_rd-1_ep-per-cl-210` | the paper's *Local Agent Training* baseline: one fixed client trains alone for all 210 epochs (no aggregation). These configs use `partition.strategy: uniform_single` with `kwargs.cl_id: 21 / 42 / 84` for `local_client1 / 2 / 3` respectively, i.e. always select that one client ID; the per-client data budget is the usual `min-goals-per-cl-100`. |
 
 The `main_seed1/` and `main_seed2/` sibling directories are the additional two
 seeds of the FedAgent main run (three seeds total).

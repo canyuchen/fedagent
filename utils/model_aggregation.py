@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Model-weight aggregation utility.
+"""Model-weight aggregation utility for FedAgent.
 
-Implements the weight-aggregation algorithms used in federated learning,
-including support for aggregating FSDP-sharded models.
+Implements the server-side weight-aggregation step of FedAgent (the
+Federated Agent RL method): after each round, the selected clients'
+locally RL-trained policies are combined into one global policy. The
+default and paper-reported aggregator is FedAvg (uniform / weighted
+parameter averaging). A FedProx variant (fedprox_aggregation) is also
+provided, but no live config selects it -- config/example.yaml defaults
+aggregation_method to 'fedavg' and every experiment config under config/
+uses 'fedavg'.
+
+Models are stored as VERL FSDP-sharded checkpoints, so this module also
+handles loading, merging, and re-sharding those per-rank shard files.
 """
 
 import torch
@@ -145,7 +154,14 @@ class ModelAggregator:
         return averaged_state
     
     def reshard_model(self, state_dict: Dict[str, torch.Tensor], world_size: int = 2, output_dir: Path = None):
-        """Re-shard and save a full state dict using VERL's FSDP scheme, creating real DTensors."""
+        """Re-shard a full (un-sharded) state dict back into VERL's FSDP per-rank shard files.
+
+        The primary path wraps each per-rank tensor as a torch DTensor (the format
+        VERL expects when resuming an FSDP checkpoint). If DTensor construction
+        fails (e.g. no CUDA device mesh available), it falls back to saving plain
+        per-rank tensors instead -- so 'real DTensors' are produced only on the
+        primary path, not the fallback.
+        """
         self.logger.info(f"Resharding model to {world_size} GPUs using VERL FSDP format...")
         
         if output_dir is None:

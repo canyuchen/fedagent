@@ -34,7 +34,9 @@ class CheckpointMonitor:
         Args:
             output_dir: Output directory path.
             keep_num: Number of checkpoints to keep (default: 1).
-            interval: Check interval in seconds (default: 300, i.e. 5 minutes).
+            interval: Check interval in seconds. This class default is 300 (5 minutes),
+                but the CLI entry point (main) passes its own argparse default of 60
+                (1 minute), so command-line runs use 60s unless --interval is given.
             daemon: Whether to run in the background.
             pid_file: PID file path (daemon mode).
             log_file: Log file path (daemon mode).
@@ -168,7 +170,13 @@ class CheckpointMonitor:
         if not global_step_dirs:
             for item in checkpoints_dir.iterdir():
                 if item.is_dir() and item.name.startswith('checkpoint-'):
-                    global_step_dirs.append((0, item))  # Use 0 as the default; sort by name.
+                    # Fallback for HF-style 'checkpoint-<n>' dirs (no 'global_step_<n>' present).
+                    # NOTE: these are all given the same sort key (0), so the later
+                    # sort(key=x[0]) leaves them in unspecified filesystem-iteration order,
+                    # not numeric or name order. The "keep the most recent" guarantee below
+                    # therefore does not hold for this path; it keeps an arbitrary keep_num
+                    # of them. Parse the trailing step number here if true recency is needed.
+                    global_step_dirs.append((0, item))
 
         if not global_step_dirs:
             return 0
@@ -359,7 +367,12 @@ class CheckpointMonitor:
         try:
             pid = os.fork()
             if pid == 0:
-                # Child process: run in the background. Record the original parent PID so approach A can detect whether the parent has exited.
+                # Child process: run detached in the background. Record the original
+                # parent PID now, before setsid(), so the liveness check used during the
+                # sleep loop (_parent_died via _interruptible_sleep) can later notice if
+                # that parent exits: when it does, this child is reparented to init/a
+                # subreaper, getppid() changes away from this recorded value, and the
+                # monitor shuts itself down instead of lingering as an orphan.
                 self._orig_ppid = os.getppid()
                 os.setsid()
 

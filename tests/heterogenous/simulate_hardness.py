@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 """
 Hardness Partition Strategy Simulation
-Tests the effect of different success_std values on difficulty (hardness) partitioning.
-Supports multiple datasets: webshop (6402 samples) and alfworld (3553 samples).
+
+Sweeps the hardness-heterogeneity knob to visualise how per-client
+task-difficulty (success-rate) mixes spread out (HardnessPartition).
+
+NAMING: the paper calls this 'Hardness' and controls it via the symbol
+xi' (xi-prime). NOTE: 'hardness' is NOT a misspelling -- it is just the
+lowercased paper term 'Hardness'. Despite its name, 'success_std' is NOT a
+standard deviation -- it is the Beta concentration, i.e. the paper's xi'
+DIRECTLY (same value, same direction): large success_std == large xi' ==
+near-uniform; small success_std == EXTREME heterogeneity. Paper sweep
+endpoints: success_std=256 (xi'=256, near-uniform) and success_std=1
+(xi'=1, extreme). 'success_std' is the runtime config key, passed down as
+hardness_partition(success_std=...).
+
+Supports multiple datasets: webshop (~6410 train samples) and alfworld
+(3553 samples).
 """
 
 import numpy as np
@@ -94,14 +108,21 @@ def create_synthetic_trajectories(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Create synthetic task_id from item id
         task_id = f"synthetic_task_{item['id']}"
         
-        # Create synthetic success rate (some categories are harder)
+        # Assign a synthetic per-item success probability. NOTE: the checks
+        # below key on the literal substrings 'category_0'/'category_1',
+        # which the real category names produced by create_synthetic_data()
+        # (beauty/electronics/... or the ALFWorld task types) never contain.
+        # In practice every item therefore falls through to the 0.3 branch,
+        # i.e. a uniform synthetic success rate. This placeholder logic is
+        # only used by create_hardness_comparison_plot()'s synthetic path; it
+        # is NOT used for the real-trajectory hardness results.
         category = item['category']
         if 'category_0' in category:
-            success_prob = 0.8  # Easy category
+            success_prob = 0.8  # (dead branch: no real category matches)
         elif 'category_1' in category:
-            success_prob = 0.6  # Medium category
+            success_prob = 0.6  # (dead branch: no real category matches)
         else:
-            success_prob = 0.3  # Hard category
+            success_prob = 0.3  # the branch actually taken for all items
         
         success = np.random.random() < success_prob
         
@@ -133,7 +154,12 @@ def simulate_hardness_partition(
         dataset: Name of the dataset ('webshop' or 'alfworld')
         client_num: Number of clients
         min_samples_per_client: Minimum samples per client
-        success_std_values: List of success_std values to test
+        success_std_values: List of hardness-heterogeneity values to sweep.
+            'success_std' is misleadingly named: it is NOT a standard
+            deviation but the Beta concentration, i.e. the paper's Hardness
+            symbol xi' DIRECTLY (large success_std -> large xi' -> near-uniform;
+            small success_std -> extreme heterogeneity). Paper endpoints: 256
+            (near-uniform) and 1 (extreme).
         save_dir: Directory to save results
     """
     os.makedirs(save_dir, exist_ok=True)

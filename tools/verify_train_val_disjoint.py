@@ -2,14 +2,22 @@
 """verify_train_val_disjoint.py — confirm Webshop & Alfworld train and val splits don't overlap.
 
 WEBSHOP (analytical, by construction in
-agent_system/environments/env_package/webshop/envs.py):
-    val   goal_idxs = [0, val_data_size)                                       # line 235
-    train goal_idxs ⊂ [500, len(goals)) (uniform-partition slice per client)   # line 257, 264
+third_party/verl-agent/agent_system/environments/env_package/webshop/envs.py):
+    val   goal_idxs = [0, val_batch_size)   (standard val pool, list(range(val_batch_size)))   # ~line 235
+    train goal_idxs ⊂ [500, len(goals))     (uniform-partition slice per client, start_idx=500) # ~lines 257, 264
+Note: the val length is bounded by the runtime `val_batch_size` field. In the
+yamls this is set directly as verl.data.val_batch_size (currently 64) and is
+ALSO mirrored by data_preprocess.val_data_size: 64, which core/fed/script_builder.py
+feeds into the run script as val_data_size=... -> data.val_batch_size. This
+script's --webshop-val-size stands in for that same val pool size.
 
-This script re-implements uniform_partition (partition_strategy.py:216) and
-verifies for the given (val_size, client_num, min_goals_per_client) that
+This script re-implements uniform_partition (defined in
+third_party/verl-agent/agent_system/environments/partition_strategy.py,
+currently around line 250) and verifies, for the given
+(val_size, client_num, min_goals_per_client), that
 val ∩ train_per_client = ∅ for all clients, and that no client's train slice
-crosses below index 500.
+crosses below index 500. (Line numbers drift as that file changes — search for
+'def uniform_partition' if the reference is stale.)
 
 ALFWORLD (empirical, file system walk):
     train    : $ALFWORLD_DATA/json_2.1.1/train/
@@ -43,10 +51,14 @@ DEFAULT_ALFWORLD_DATA = os.path.expanduser("~/.cache/alfworld")
 
 def uniform_partition_slice(total: int, client_id: int, client_num: int,
                             min_samples: int) -> tuple[int, int]:
-    """Mirror of third_party/.../partition_strategy.py:uniform_partition (lines 216-303).
+    """Mirror of uniform_partition in
+    third_party/verl-agent/agent_system/environments/partition_strategy.py
+    (currently def at ~line 250, body through ~line 344).
 
-    Returns (start_slice, end_slice) — both relative to start_idx=500, i.e. real
-    goal indices are [500+start, 500+end).
+    Reproduces only the start/end slice arithmetic (including the
+    min_samples_per_client growth that lets a client's slice extend on both
+    sides). Returns (start_slice, end_slice) — both relative to start_idx=500,
+    i.e. real goal indices are [500+start, 500+end).
     """
     base = total // client_num
     start = client_id * base

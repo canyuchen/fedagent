@@ -96,9 +96,22 @@ class FederatedServer:
         self.clients_per_round = cpr if cpr > 0 else 1
         self.total_rounds = fed_config['total_rounds']
         self.epochs_per_client = fed_config['epochs_per_client']
+        # Paper notation (see paper FedAgent): total_clients=N (client pool, default 100),
+        # clients_per_round=M (clients sampled & FedAvg-aggregated per round, default 2),
+        # total_rounds=T (federated rounds / server aggregations, default 70),
+        # epochs_per_client=E (local RL epochs each selected client runs per round,
+        # default 3) => E*T = 210 total local epochs per client. The decentralized
+        # sensitivity ablation sweeps these three knobs (M / E,T / |X_i|).
         # Optional: after total_rounds training rounds, run one extra round_{N+1}
-        # whose clients only do val_before_train (total_epochs=0) and skip aggregation.
-        # Lets plots include the post-training eval as a real x = total_rounds * stride point.
+        # whose clients only do val_before_train (total_epochs=0) and skip aggregation
+        # (forced in core/fed/script_builder.py / round_orchestrator.py).
+        # Purpose: give the post-training evaluation its own real data point on the
+        # training-dynamics plot (scripts/plotting/plot_training_dynamics.py). That plot
+        # places round r at x = (r-1) * stride, where "stride" is the per-round x-axis
+        # spacing returned by infer_round_stride (= max local step observed + 1, floored
+        # at 1; it only spreads out per-client local steps under --with-clients). The
+        # last training round T thus sits at (T-1)*stride, so this extra eval-only round
+        # (round T+1) lands at x = total_rounds * stride, the post-training data point.
         self.eval_only_final_round = bool(fed_config.get('eval_only_final_round', False))
         self.effective_total_rounds = self.total_rounds + (1 if self.eval_only_final_round else 0)
         self.base_script_path = Path(fed_config['base_script_path'])

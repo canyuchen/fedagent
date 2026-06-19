@@ -1,8 +1,19 @@
-"""Generate the WebShop holdout-distractor list for env-level OOD eval.
+"""Generate the WebShop reserved-distractor list for Environment-Level OOD evaluation.
 
-Runs once. Output is committed alongside the env-level yamls at
-data/env_heterogeneity/holdout_webshop_v1.json.
-yaml configs reference this file via federated.data_sharding.partition.kwargs.holdout_file.
+This builds the set of distractor product ASINs that are held out of every
+client's training catalog and injected only into the unperturbed validation
+catalog, so the WebShop Environment-Level Heterogeneity experiments (paper
+Variant 1, "Catalog Split") are scored on out-of-distribution (OOD) products
+that no client trained on. The same list is consumed by both catalog-split
+implementations exposed via the HOLDOUT_FILE env var: the current `catalog_split`
+strategy (function `_distractor_disjoint_partition_webshop_v5`) and the legacy
+`distractor_disjoint` strategy (`_distractor_disjoint_partition_webshop`).
+
+Runs once. Output is committed alongside the Environment-Level yaml configs at
+data/env_heterogeneity/holdout_webshop_v1.json (the `_v1` suffix is this artifact's
+dataset revision number, NOT the paper's Variant 1). yaml configs reference the
+file via federated.data_sharding.partition.kwargs.holdout_file, which script_builder
+exports as HOLDOUT_FILE for the partition strategy to read.
 """
 import json
 import random
@@ -43,14 +54,20 @@ def main(holdout_seed: int = 99999, per_category: int = 6):
         cat_counts[cat] = len(picked)
 
     output = {
+        # Dataset revision tag for this holdout artifact (revision 1). This is a
+        # bookkeeping field only -- it is written to the JSON but never read by the
+        # runtime -- and it is unrelated to the paper's Environment-Level "Variant"
+        # numbering (this distractor set serves paper Variant 1, Catalog Split).
         "version": "v1",
         "seed": holdout_seed,
         "n_holdout": len(holdout),
         "asins": sorted(holdout),
         "per_category_count": cat_counts,
         "comment": (
-            "Reserved distractor ASINs for OOD env eval. "
-            "Inject into eval_unseen catalog only; never include in any client training catalog."
+            "Reserved distractor ASINs for Environment-Level out-of-distribution (OOD) "
+            "evaluation of paper Variant 1 (Catalog Split). "
+            "Inject into the unperturbed validation (eval_unseen) catalog only; "
+            "never include in any client training catalog."
         ),
         "stats": {
             "total_products": len(products),

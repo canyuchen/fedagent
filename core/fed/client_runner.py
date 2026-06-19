@@ -109,6 +109,12 @@ class ClientRunner:
             }
 
         except subprocess.TimeoutExpired:
+            # NOTE: currently unreachable. Neither subprocess.Popen above nor
+            # process.wait() is given a `timeout=`, so no TimeoutExpired is ever
+            # raised from this block. The '3600 seconds' figure written to the
+            # log below is therefore stale/aspirational, not an enforced limit.
+            # Kept so that adding a wait/Popen timeout later activates a clean
+            # failure path; if you re-enable a timeout, update the 3600s text.
             self.logger.error(f"Client {client_id} training timed out")
             with open(log_file, 'w') as f:
                 f.write(f"=== Client {client_id} Training Log (Round {round_num}) ===\n")
@@ -263,7 +269,13 @@ class ClientRunner:
             return None
 
     def _parse_metrics_from_log(self, log_content: str) -> Dict[str, Any]:
-        """Parse metrics from training-log text (kept for reuse; no caller, 2026-04-18)."""
+        """Parse metrics from the contents of a `training.log` file.
+
+        Dead code as of 2026-04-18: nothing in the repo calls this. The live
+        path parses stdout instead (`_parse_metrics_from_stdout`). Retained only
+        as a thin wrapper over the shared parser `_parse_text_for_metrics` in
+        case log-file parsing is wired back in; delete if still unused.
+        """
         return self._parse_text_for_metrics(log_content)
 
     def _parse_metrics_from_stdout(self, stdout: str, stderr: str) -> Dict[str, Any]:
