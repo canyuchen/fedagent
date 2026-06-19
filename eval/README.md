@@ -71,9 +71,10 @@ SPLIT=val VAL_TOTAL=140 bash eval/batch_alfworld_eval.sh vllm /path/to/checkpoin
 Both write `output/inference/all_trajectories_{webshop,alfworld}_val.json`.
 
 - **Default** (`SPLIT=val`, no `VAL_TOTAL`): the in-training validation set, i.e.
-  `VAL_SUBSET` goals (default 64 = `data.val_batch_size`). WebShop draws a fixed-seed
-  scattered subset of `goals[0:500]`; ALFWorld takes the first 64 of the seed-shuffled
-  `valid_seen`. Both match the goals the reported `val/success_rate` uses.
+  `goals[0:VAL_SUBSET]` (default 64 = `data.val_batch_size`). WebShop rolls out
+  `goals[0:64]` (the federated val set, via the windowed-val path); ALFWorld takes the
+  first 64 of the seed-shuffled `valid_seen`. Both match the goals the reported
+  `val/success_rate` is computed on.
 - **Sweep** (`VAL_TOTAL=N`): cover held-out `goals[0:N]` in `BATCH_SIZE` windows, with
   bounded memory. Lower `BATCH_SIZE` for smaller batches.
 

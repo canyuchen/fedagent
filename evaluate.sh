@@ -63,7 +63,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (or contains) exactly one FSDP-sharded actor dir, merge it once and evaluate the
 # merged dir; a base HF model dir or an already-merged dir passes through unchanged.
 if [[ -d "${CKPT}" ]]; then
-  mapfile -t _actor_dirs < <(find "${CKPT}" -maxdepth 5 -type f -name 'model_world_size_*_rank_0.pt' -exec dirname {} \; 2>/dev/null | sort -u)
+  # Only consider the actor (policy) shards. PPO checkpoints also write critic/ shards
+  # with the same filename under the same global_step_N; matching both would look like
+  # "multiple checkpoints". Restrict to dirs named 'actor'.
+  mapfile -t _actor_dirs < <(find "${CKPT}" -maxdepth 5 -type f -name 'model_world_size_*_rank_0.pt' -exec dirname {} \; 2>/dev/null | grep -E '(^|/)actor$' | sort -u)
   if [[ "${#_actor_dirs[@]}" -gt 1 ]]; then
     echo "[evaluate] ${CKPT} contains multiple FSDP checkpoints:" >&2
     printf '  %s\n' "${_actor_dirs[@]}" >&2

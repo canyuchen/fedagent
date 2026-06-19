@@ -38,9 +38,12 @@ dist/
 
 # --- Local machine config / secrets ------------------------------------------
 .env
-config/paths.yaml          # machine-specific; copy from paths.yaml.example
-config/_reproduce_generated/   # override configs materialised by reproduce.sh
-config/_custom/                # scratch dir for hand-rolled config overrides
+# machine-specific; copy from paths.yaml.example
+config/paths.yaml
+# override configs materialised by reproduce.sh
+config/_reproduce_generated/
+# scratch dir for hand-rolled config overrides
+config/_custom/
 
 # --- Internal planning doc (MUST NOT ship) -----------------------------------
 RELEASE_PLAN.md

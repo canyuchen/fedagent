@@ -10,18 +10,20 @@
 #     goals[500 + b*128 : 500 + (b+1)*128]. Batching is needed (and possible) here
 #     because the pool is large and start/end select an index window.
 #
-#   SPLIT=val               DEFAULT: reproduce the EXACT in-training validation set:
-#     one fixed-seed random VAL_SUBSET (default 64) subset of the held-out pool
-#     goals[0:500], single pass, merged to
-#     output/inference/all_trajectories_webshop_val.json. These are the same goals the
-#     reported val/success_rate is computed on (env.seed 0 -> RandomState(1000) draws
-#     env_num=VAL_SUBSET goals via np.random.choice: a SCATTERED 64-of-500 subset,
-#     e.g. idx 4,6,21,...494, NOT the first 64, fixed every round/run).
+#   SPLIT=val               DEFAULT: reproduce the EXACT in-training validation set =
+#     goals[0:VAL_SUBSET] (default 64), single pass, merged to
+#     output/inference/all_trajectories_webshop_val.json. The FEDERATED trainer's
+#     WebShop val set is goals[0:64] (fed_env_manager passes val_batch_size=64 ->
+#     goal_idxs=range(64)), so VAL_SUBSET=64 rolls out exactly the goals the reported
+#     val/success_rate is computed on. The default uses the windowed-val path
+#     (env.webshop.start_idx=0/end_idx=VAL_SUBSET, no infer_special -> range(0,
+#     VAL_SUBSET)); goals[0:N] indexes the seed-42-shuffled goal list, so it is
+#     identical across clients/runs. (Note: the standalone make_envs path leaves the
+#     env's val_batch_size at its 500 default, which is why we pass start/end here
+#     instead of relying on a bare run; a bare run would draw a scattered 64-of-500,
+#     NOT goals[0:64].)
 #       Set VAL_TOTAL=N to instead SWEEP the held-out pool goals[0:N] in BATCH_SIZE
-#       windows (symmetric with SPLIT=train): each batch passes start/end WITHOUT
-#       infer_special so the env slices goals[start:end] with no +500 offset
-#       (windowed-val path in envs.py), bounded memory, START_BATCH resumes.
-#       VAL_TOTAL=500 = the entire pool (and includes the default 64); max 500.
+#       windows (symmetric with SPLIT=train); VAL_TOTAL=500 = the entire pool; max 500.
 #
 # Usage:
 #   [VAR=value ...] bash eval/batch_webshop_eval.sh [ENGINE] [CHECKPOINT] [START_BATCH]
@@ -41,8 +43,8 @@
 #     SPLIT              train (default) | val
 #     TOTAL_TRAIN_GOALS  train: len(goals) - 500 (default 6410; the shipped small
 #                        catalog with use_small=True; env prints the count at startup).
-#     VAL_SUBSET         val (default mode): exact in-training val = one fixed-seed
-#                        random subset of goals[0:500] (default 64 = data.val_batch_size).
+#     VAL_SUBSET         val (default mode): exact in-training val = goals[0:VAL_SUBSET]
+#                        (default 64 = data.val_batch_size; the federated val set).
 #     VAL_TOTAL          val: if set, SWEEP held-out goals[0:VAL_TOTAL] in BATCH_SIZE
 #                        windows instead (e.g. 500 = full pool; max 500).
 #     BATCH_SIZE         window size for train and the VAL_TOTAL sweep (default 128).
@@ -156,14 +158,17 @@ if [ "$SPLIT" = "val" ]; then
     val_out="${val_root}/all_trajectories_webshop_val.json"
 
     if [ -z "${VAL_TOTAL:-}" ]; then
-        # DEFAULT: reproduce the EXACT in-training validation set = one fixed-seed
-        # random VAL_SUBSET-subset of the held-out pool goals[0:500] (no windowing).
-        # VAL_SUBSET=64 (the in-training val_batch_size) gives the same goals the
-        # reported val/success_rate is computed on. Set VAL_TOTAL=N to sweep instead.
-        echo "[batch-eval] WebShop VAL (in-training set): ${VAL_SUBSET} goals = fixed-seed random subset of goals[0:500] (single run)"
+        # DEFAULT: reproduce the EXACT in-training validation set = goals[0:VAL_SUBSET]
+        # via the windowed-val path (start/end without infer_special -> goal_idxs =
+        # range(0,VAL_SUBSET)). The FEDERATED trainer's WebShop val is goals[0:64]
+        # (fed_env_manager passes val_batch_size=64), so VAL_SUBSET=64 matches the
+        # goals the reported val/success_rate is computed on. Set VAL_TOTAL=N to sweep.
+        echo "[batch-eval] WebShop VAL (in-training set): goals[0:${VAL_SUBSET}] (single run)"
         val_dir="${val_root}/trajectories_webshop_val"
         rm -rf "${val_dir}"
-        run_infer "${VAL_SUBSET}" "${val_dir}"
+        run_infer "${VAL_SUBSET}" "${val_dir}" \
+            +env.webshop.start_idx=0 \
+            +env.webshop.end_idx="${VAL_SUBSET}"
         python3 ${SCRIPT_DIR}/merge_trajectories.py "${val_dir}" "${val_out}"
         echo "[batch-eval] done -> ${val_out}"
         exit 0

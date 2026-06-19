@@ -33,6 +33,11 @@ files used by the *environment-level* heterogeneity experiments are committed he
 These are **derived from the WebShop and ALFWorld benchmark data (both MIT)**: see
 [`../NOTICE`](../NOTICE) for attribution.
 
-> TODO(author): confirm the final on-disk location each downloaded artifact must
-> land in (see the paths consumed by `tools/resolve_paths.py` and the vendored
-> WebShop / ALFWorld envs).
+**Where each artifact lands.** WebShop product data (the shipped `*_1000.json` /
+`items_human_ins.json` small files, and the full `items_shuffle.json` /
+`items_ins_v2.json` catalog if you fetch it) lives in
+`third_party/verl-agent/agent_system/environments/env_package/webshop/webshop/data/`,
+which is where the env loads it from. ALFWorld game files land in `$ALFWORLD_DATA`
+(default `~/.cache/alfworld`); export the **same** `ALFWORLD_DATA` for both
+`download_data.sh` and training. The bundled `env_heterogeneity/` files above stay
+where they are committed under `data/`.

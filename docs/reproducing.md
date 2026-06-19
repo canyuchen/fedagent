@@ -291,7 +291,7 @@ Each leaf holds the **6 sweep configs**: the two endpoints of each sub-type:
 conda activate fedagent-webshop
 python tools/run_federated.py --restart-resume task_heterogeneity/grpo/webshop/fed_webshop_grpo_total-100_cl-per-rd-2_rd-70_ep-per-cl-3_min-goals-per-cl-100_p-preference_omega-0.99
 
-# Coverage, high spread, ALFWorld-GRPO:
+# Coverage, near-uniform, ALFWorld-GRPO:
 conda activate fedagent-alfworld
 python tools/run_federated.py --restart-resume task_heterogeneity/grpo/alfworld/fed_alfworld_grpo_total-100_cl-per-rd-2_rd-70_ep-per-cl-3_min-goals-per-cl-100_p-coverage_std-256
 ```

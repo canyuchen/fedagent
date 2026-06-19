@@ -18,9 +18,10 @@ line-by-line diff.
 >   Reinforcement Learning", arXiv:2505.10978 (Apache-2.0).
 > - veRL: ByteDance / the veRL authors (Apache-2.0).
 >
-> TODO(author): pin the exact upstream verl-agent commit/tag this copy was
-> vendored from, and verify the modification list below against the final diff
-> before public release.
+> Vendored from upstream **`langfengQ/verl-agent`** at commit
+> **`a64f4e0905690823b21c4244354bfef63980b8f4`** (which embeds veRL `0.3.1.dev0`).
+> FedAgent's modifications are layered on top of that snapshot; the summary below
+> is not a line-by-line diff.
 
 ## Summary of FedAgent modifications
 
@@ -83,8 +84,32 @@ across clients, implemented primarily for WebShop and selected via
   vendored env package via `config/paths.yaml`. No test files are added inside
   `third_party/verl-agent/` itself.
 
+### 6. Modified-in-place upstream files (environment layer)
+
+The environment-level heterogeneity (section 4) and the federated-validation
+machinery are implemented by editing existing upstream files in place, not only by
+adding new ones. The known in-place edits:
+
+- **`agent_system/environments/env_manager.py`** — per-env start_idx/end_idx and
+  infer_special selection wired into env construction (plus defensive config access).
+- **`agent_system/environments/__init__.py`** — exposes the federated env managers.
+- **`agent_system/environments/env_package/webshop/envs.py`** — goal slicing,
+  partition-strategy dispatch, infer_special, and the windowed validation path.
+- **`.../webshop/webshop/web_agent_site/envs/web_agent_text_env.py`** and
+  **`.../web_agent_site/engine/engine.py`** — env-level heterogeneity hooks (catalog
+  double-track, lookalike injection, BM25 / search-engine variants) and fixed-seed
+  goal shuffling.
+- **`.../alfworld/alfworld/agents/environment/alfred_tw_env.py`** and
+  **`.../alfworld/envs.py`** — federated game-file sharding, index-based batch
+  selection, and held-out valid_seen windowing.
+
+Each retains its upstream copyright/license header; the edits are FedAgent's.
+
 ## Files NOT modified
 
-All other files retain their upstream content and their upstream copyright and
-license headers. Where present, upstream `LICENSE`/`NOTICE` files (and the
-nested environment packages' license files) are preserved.
+All files other than the additions in sections 1-5 and the in-place edits in
+section 6 retain their upstream content and their upstream copyright and license
+headers. This summary is not a line-by-line diff; the exhaustive list will be
+regenerated against the pinned upstream commit (see the TODO above) before public
+release. Where present, upstream `LICENSE`/`NOTICE` files (and the nested
+environment packages' license files) are preserved.

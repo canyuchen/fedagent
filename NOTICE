@@ -1,5 +1,5 @@
 FedAgent
-Copyright 2026 The FedAgent Authors  [TODO(author): legal copyright holder]
+Copyright 2026 The FedAgent Authors
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
@@ -39,6 +39,15 @@ alongside that source.
    Embodied household agent benchmark. An MIT LICENSE text matching the upstream
    ALFWorld terms (reconstructed; see the note at the top of the file) is included
    under third_party/verl-agent/.../env_package/alfworld/alfworld/.
+
+   GPL component (disclosure): the vendored ALFWorld copy also includes the
+   Metric-FF planner (Joerg Hoffmann) under
+   .../alfworld/alfworld/gen/ff_planner/, whose C sources carry GNU General Public
+   License v2-or-later headers. It is a standalone game-generation tool: it is NOT
+   compiled, linked, or imported by FedAgent's Apache-2.0 code, and is NOT used by
+   the released WebShop/ALFWorld experiments (which run on pre-generated game files
+   fetched via download_data.sh). It is shipped only as mere aggregation; its GPL
+   terms apply solely to that subdirectory, per the headers in its source files.
 
 -------------------------------------------------------------------------------
 5. gym_cards (RL4VLM) and gym-sokoban

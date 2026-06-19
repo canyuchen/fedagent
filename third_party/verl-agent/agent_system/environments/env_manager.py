@@ -1121,9 +1121,15 @@ def make_envs(config):
             'eval_dataset': 'eval_in_distribution', # 'eval_in_distribution' or 'eval_out_of_distribution'
         }
         
-        # get AlfWorld's start_idx and end_idx parameters
-        start_idx = getattr(config.env.alfworld, 'start_idx', None)
-        end_idx = getattr(config.env.alfworld, 'end_idx', None)
+        # get AlfWorld's start_idx and end_idx parameters. Use .get on the intermediate
+        # 'alfworld' key: the base trainer config has no env.alfworld block, and
+        # dereferencing config.env.alfworld directly raises ConfigAttributeError before
+        # getattr's default applies. That broke the standalone eval paths that pass no
+        # +env.alfworld.* (evaluate.sh alfworld; batch_alfworld_eval.sh SPLIT=val); the
+        # '+'-prefixed train/sweep paths add the key, so they were unaffected.
+        _alf_cfg = config.env.get('alfworld', {})
+        start_idx = _alf_cfg.get('start_idx', None)
+        end_idx = _alf_cfg.get('end_idx', None)
         
         _envs = build_alfworld_envs(alf_config_path, config.env.seed, config.data.train_batch_size, group_n, is_train=True, env_kwargs=env_kwargs)
         

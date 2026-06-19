@@ -27,6 +27,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 REQ_FILE="${PROJECT_ROOT}/${TASK}_requirements.txt"
 
+# Install the task requirements into $ENV_NAME. Two robustness fixes over a plain
+# `pip install -r`:
+#   - run from PROJECT_ROOT so the editable `-e ./third_party/verl-agent` line in the
+#     reqs resolves regardless of the caller's working directory;
+#   - flash-attn is listed before torch in the reqs and imports torch at build time,
+#     so install torch first and build flash-attn with isolation off, then install the
+#     rest (the now-satisfied torch / flash-attn lines are skipped).
+install_reqs() {
+    cd "$PROJECT_ROOT"
+    local torch_pin flash_pin
+    torch_pin="$(grep -iE '^torch==' "$REQ_FILE" | head -1)"
+    flash_pin="$(grep -iE '^flash[-_]attn==' "$REQ_FILE" | head -1)"
+    [ -n "$torch_pin" ] && conda run -n "$ENV_NAME" pip install "$torch_pin"
+    [ -n "$flash_pin" ] && conda run -n "$ENV_NAME" pip install "$flash_pin" --no-build-isolation
+    conda run -n "$ENV_NAME" pip install -r "$REQ_FILE"
+}
+
 case "$ACTION" in
     list)
         echo "Available task reqs in ${PROJECT_ROOT}:"
@@ -42,7 +59,7 @@ case "$ACTION" in
         echo "Creating conda env: $ENV_NAME (python 3.10)"
         conda create -y -n "$ENV_NAME" python=3.10
         echo "Installing from $REQ_FILE ..."
-        conda run -n "$ENV_NAME" pip install -r "$REQ_FILE"
+        install_reqs
         echo ""
         echo "Done. Activate with:  conda activate $ENV_NAME"
         ;;
@@ -51,7 +68,7 @@ case "$ACTION" in
         [ -z "$TASK" ] && { echo "Error: task is required"; exit 1; }
         [ ! -f "$REQ_FILE" ] && { echo "Error: $REQ_FILE not found"; exit 1; }
         echo "Updating $ENV_NAME from $REQ_FILE ..."
-        conda run -n "$ENV_NAME" pip install -r "$REQ_FILE"
+        install_reqs
         echo ""
         echo "Done. Activate with:  conda activate $ENV_NAME"
         ;;

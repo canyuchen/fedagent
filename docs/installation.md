@@ -74,6 +74,9 @@ Backbones are specified as **HuggingFace model ids** (e.g.
   login node (`huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct`), then set
   `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` on the compute nodes, or point
   `actor_rollout_ref.model.path` / `tokenizer_path` at a local snapshot directory.
+  Also pre-fetch the small placeholder dataset that every run loads to size the
+  train/val loaders: `huggingface-cli download --repo-type dataset hiyouga/geometry3k`
+  (the actual WebShop / ALFWorld episodes come from the environment, not this dataset).
 
 ## Path configuration (both envs)
 
