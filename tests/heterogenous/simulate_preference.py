@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """
 Preference Partition Strategy Simulation
-Tests the effect of different tau values on the preference partition
-(non-IID over the product-category marginal).
-Supports multiple datasets: webshop (6410 samples) and alfworld (3553 samples).
+
+Sweeps the preference-heterogeneity knob to visualise non-IID over the
+product-category marginal (PreferencePartition, Dirichlet construction).
+
+NAMING: the paper calls this knob omega (the Dirichlet spread fraction;
+larger omega -> higher heterogeneity). This script and the underlying
+preference_partition() still use the LEGACY keyword 'tau' for the same
+value -- partition_strategy.py aliases omega=tau when omega is unset. Do
+NOT confuse this 'tau' with the paper's task-descriptor tau, which is an
+unrelated concept; here 'tau' == omega.
+
+Supports multiple datasets: webshop (~6410 train samples) and alfworld
+(3553 samples).
 """
 
 import numpy as np
@@ -98,7 +108,12 @@ def simulate_preference_partition(
         data: Synthetic data
         client_num: Number of clients
         min_samples_per_client: Minimum samples per client
-        tau_values: List of tau values to test
+        tau_values: List of preference-heterogeneity values to sweep. The
+            keyword is the LEGACY name 'tau'; the paper's symbol for this
+            knob is omega (Dirichlet spread fraction, in (0,1); larger ->
+            more heterogeneous). Endpoints used in the paper: omega=0.01
+            (near-uniform) and omega=0.99 (extreme). Passed straight through
+            to preference_partition(tau=...), which aliases it to omega.
         save_dir: Directory to save results
     """
     os.makedirs(save_dir, exist_ok=True)

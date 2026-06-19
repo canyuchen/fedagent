@@ -68,6 +68,8 @@ case "$ACTION" in
         ;;
 
     *)
+        # Unknown/empty action: print this file's usage header (its lines 2-15,
+        # the Usage/Notes block above) as help text, then exit non-zero.
         sed -n '2,15p' "$0"
         exit 1
         ;;

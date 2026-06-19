@@ -2,6 +2,12 @@
 # Evaluate a (trained) checkpoint on the WebShop environment and collect
 # per-episode trajectories.
 #
+# What it runs on: ONE 128-goal batch over the WebShop TRAINING pool
+# (goals[500:628], via env.webshop.infer_special). This is a trajectory dump, not
+# a held-out test; the reported val/success_rate is the in-training validation on
+# the held-out goals[0:500]. To cover the WHOLE training pool for the `hardness`
+# partition, use eval/batch_webshop_eval.sh.
+#
 # Usage:
 #   bash eval/eval_webshop.sh [ENGINE] [PRETRAINED_MODEL_PATH]
 #
@@ -35,7 +41,15 @@ project_root=$(read_yaml_path "['project_root']")
 verl_agent_repo=$(read_yaml_path "['repo']['verl_agent']")
 
 # Evaluation configuration.
-train_data_size=4 # match GRPO and GiGPO configuration (16 x 8)
+train_data_size=4 # Inference-only run (trainer.total_epochs=0): this value only
+                  # sizes the placeholder train.parquet that
+                  # examples.data_preprocess.prepare emits (it does
+                  # dataset['train'].select(range(train_data_size))). It is NOT a
+                  # GRPO rollout group size (the '16 x 8' wording was copied from
+                  # the upstream verl-agent TRAINING script run_webshop.sh, where
+                  # train_data_size=128). The episodes actually evaluated are the
+                  # WebShop goals selected by env.webshop.start_idx/end_idx below
+                  # (here exactly end_idx-start_idx=128 goals), not this number.
 val_data_size=128
 
 # Pretrained model / checkpoint path. Override via the second positional

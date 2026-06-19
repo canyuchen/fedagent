@@ -865,12 +865,29 @@ def fed_make_envs(config, client_id=None, client_num=None):
                   f'|catalog|={len(catalog_asins)}')
 
         # ============================================================
-        # Catalog-Split: per-client target floor distractor disjoint
+        # PAPER VARIANT 1: Catalog Split (Environment-Level heterogeneity,
+        # Stage 1 = content/catalog). code key 'catalog_split'.
+        # SimServer override key: env_kwargs['catalog_filter_asins'] (catalog/env
+        # axis) plus env_kwargs['client_goal_idxs'] (task axis).
         # See docs/heterogeneity.md
-        # Differs from v4 (`distractor_disjoint`):
-        #   - task partition: uniform_partition 100/client (matches main exp)
-        #   - env partition: protects per-client target ASINs only (~50-80),
-        #                    distractor_pool ≈ 920 (vs v4's 585 shared by all clients)
+        #
+        # NOTE ON "v4"/"v5": these are IMPLEMENTATION-REVISION numbers of the
+        # WebShop catalog-partition function, NOT the paper's Variant 4 / Variant 5.
+        #   v4 = _distractor_disjoint_partition_webshop (code key 'distractor_disjoint')
+        #        -- LEGACY/superseded impl, not a reported paper result.
+        #   v5 = _distractor_disjoint_partition_webshop_v5 (code key 'catalog_split', THIS block)
+        #        -- CURRENT impl used for the paper's Variant 1 numbers.
+        # BOTH revisions realize the SAME paper variant (Variant 1, Catalog Split).
+        # They are UNRELATED to paper Variant 4 (Lookalike Injection, 'lookalike_injection')
+        # and paper Variant 5 (Rank Wrapper, 'rank_wrapper').
+        #
+        # How the v5 (catalog_split) revision differs from the v4 (distractor_disjoint) revision:
+        #   - task partition: uniform_partition 100/client (matches the main experiment)
+        #   - env partition: protects only THIS client's target ASINs (~50-80),
+        #                    so distractor_pool is per-client and ~920
+        #                    (the v4 revision instead protects all 415 training
+        #                     targets, giving a single 585-item distractor pool
+        #                     shared by every client).
         #   - returns (catalog_asins, client_goal_idxs); webshop/envs.py uses
         #     client_goal_idxs to set self.goal_idxs (no longer hardcodes range(500, len(goals))).
         # ============================================================
@@ -921,7 +938,12 @@ def fed_make_envs(config, client_id=None, client_num=None):
                   f'|catalog|={len(catalog_asins)} |goal_idxs|={len(client_goal_idxs)}')
 
         # ============================================================
-        # Transition-level env heterogeneity: Lookalike Injection (lookalike adversarial)
+        # PAPER VARIANT 4: Lookalike Injection (Environment-Level heterogeneity).
+        # code key 'lookalike_injection'. Spans Stages 1+3 (content/catalog +
+        # matching/score) JOINTLY -- NOT Stage 4 (do not assume variant#==stage#).
+        # SimServer override key: env_kwargs['extra_products']. Default N=2.
+        # (Unrelated to the 'v4'/'v5' partition-revision numbers in the
+        #  catalog_split block above, which both refer to paper Variant 1.)
         # See docs/heterogeneity.md
         #   - task partition: uniform
         #   - env partition: per-client extra_products (lookalike attack on
@@ -941,9 +963,14 @@ def fed_make_envs(config, client_id=None, client_num=None):
             env_kwargs['extra_products'] = extra_products
 
         # ============================================================
-        # Transition-level env heterogeneity: search-engine TYPE swap
-        # 4 variants break different baseline-policy assumptions while
-        # preserving reward gradient.
+        # PAPER VARIANT 5: Rank Wrapper (Environment-Level heterogeneity,
+        # Stage 4 = rendering/ranking). code key 'rank_wrapper'.
+        # SimServer override key: env_kwargs['search_engine_variant']. Default N=4.
+        # (Unrelated to the 'v5' partition-revision number in the catalog_split
+        #  block above, which refers to paper Variant 1.)
+        # Mechanism: search-engine TYPE swap -- the N variants break different
+        # baseline-policy assumptions while preserving the reward gradient.
+        # See docs/heterogeneity.md
         # ============================================================
         if partition_strategy_env == 'rank_wrapper':
             from agent_system.environments.partition_strategy import (
@@ -957,7 +984,14 @@ def fed_make_envs(config, client_id=None, client_num=None):
             env_kwargs['search_engine_variant'] = search_cfg
 
         # ============================================================
-        # Transition-level env heterogeneity: BM25 Reweighting (in-memory BM25 variants)
+        # PAPER VARIANTS 2 & 3 (one code key 'bm25_variant' serves both).
+        # The variant is selected by env var BM25_VARIANT_POOL (read inside
+        # _bm25_variant_partition_webshop):
+        #   BM25_VARIANT_POOL=fields_only -> paper Variant 2: Field-Subset Index
+        #                                    (Stage 2 = encoding/index).
+        #   default pool                  -> paper Variant 3: BM25 Reweighting
+        #                                    (Stage 3 = matching/score).
+        # SimServer override key: env_kwargs['bm25_in_memory_config'].
         # See docs/heterogeneity.md
         #   - task partition: uniform (no catalog filter, no goal_idxs override)
         #   - env partition: per-client InMemoryBM25Searcher with (fields, k1, b)

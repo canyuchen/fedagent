@@ -47,10 +47,18 @@ def get_shuffle_seed(config: Dict[str, Any], logger=None) -> Optional[int]:
 
 
 def extract_dataset_name(config_path: str, logger=None) -> str:
-    """Extract a dataset name like 'verl-agent_webshop_grpo' from a config filename.
+    """Extract a '<repo>_<dataset>_<optimizer>' name from a fed config filename.
 
-    Example: fed_webshop_grpo_total-100_...yaml -> verl-agent_webshop_grpo
-    Fallback (single underscore after fed_): fed_alfworld_... -> verl-agent_alfworld
+    The names returned here index the verl-agent training repo/run, so they are
+    prefixed with 'verl-agent_'. Real configs are named
+    'fed_<dataset>_<optimizer>_total-...': two tokens follow 'fed_', so the
+    primary regex captures '<dataset>_<optimizer>'.
+      Example (matches the primary regex):
+        fed_webshop_grpo_total-100_...yaml -> verl-agent_webshop_grpo
+        fed_alfworld_ppo_total-100_...yaml -> verl-agent_alfworld_ppo
+    The single-token fallback regex is a defensive path for hypothetical names
+    that carry only ONE token after 'fed_' (e.g. 'fed_webshop_run.yaml' ->
+    'verl-agent_webshop'); no current config in this repo reaches it.
     """
     log = logger or _logger
     name = os.path.basename(config_path).replace('.yaml', '')

@@ -73,7 +73,15 @@ def aggregate_shards(client_shards: list, rank: int):
         if len(param_values) == 1:
             aggregated_shard[key] = param_values[0]
         else:
-            # Averaging aggregation.
+            # FedAvg parameter averaging: take the unweighted (uniform 1/k) mean of
+            # this parameter across the k = len(param_values) participating clients
+            # for this round. The paper aggregates with FedAvg; with the default
+            # M=2 clients per round, k=2 so each client contributes 1/2. NOTE: this
+            # FSDP path is always unweighted -- it ignores any per-client weights
+            # (model_aggregation._multi_gpu_fsdp_aggregation does not pass --weights
+            # to this script), which matches FedAvg's default equal weighting.
+            # DTensors are averaged on their local shards (.to_local()) so the sharded
+            # layout is preserved; plain tensors are averaged directly.
             if isinstance(param_values[0], DTensor):
                 # DTensor parameter: average the local_tensor.
                 local_tensors = [p.to_local() for p in param_values]

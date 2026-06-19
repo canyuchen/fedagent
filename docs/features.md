@@ -129,9 +129,16 @@ hyperparameter-sensitivity sweeps ship as ready-made config groups.
 | `\|Xᵢ\|` | `data_sharding.min_goals_per_client` | tasks per client |
 | seed | `data_sharding.seed` | deterministic client → data assignment |
 
-Ready-made sweeps:
-`config/decentralized/{ep_per_round_change, samples_change, selected_cl_change}/`.
-The config filename encodes the protocol
+Ready-made sweeps under `config/decentralized/` (each varies one knob from the
+table above while holding the others at the main-table defaults):
+
+| Directory | Sweeps | What changes in the filename |
+|---|---|---|
+| `selected_cl_change/` | **M** (`clients_per_round`) | `cl-per-rd-1 / 2 / 4` |
+| `samples_change/` | **\|Xᵢ\|** (`min_goals_per_client`) | `min-goals-per-cl-100 / 500 / 1000` |
+| `ep_per_round_change/` | **E** (`epochs_per_client`), with **T** (`total_rounds`) adjusted to keep `E×T = 210` fixed | `ep-per-cl-1_rd-210`, `ep-per-cl-3_rd-70`, `ep-per-cl-5_rd-42` |
+
+The config filename encodes the full protocol
 (e.g. `…total-100_cl-per-rd-2_rd-70_ep-per-cl-3…`); the decoder is in
 [configuration.md](configuration.md).
 

@@ -1,13 +1,23 @@
-"""Generate the AlfWorld holdout-scenes list for env-level OOD eval.
+"""Generate the AlfWorld held-out-scenes list for Environment-Level OOD evaluation.
 
-Runs once. Output is committed alongside the env-level yamls at
-data/env_heterogeneity/holdout_alfworld_v1.json.
-yaml configs reference this file via federated.data_sharding.partition.kwargs.holdout_file.
+This builds the set of ALFRED FloorPlan scene IDs that are excluded from every
+client's training trials, so AlfWorld Environment-Level Heterogeneity experiments
+(the `env_disjoint`, scene-disjoint partition; this realization is unnamed in the
+paper) are scored on out-of-distribution (OOD) scenes that no client trained on.
+The `_env_disjoint_partition_alfworld` strategy drops every trial in these scenes
+in Step 1 (`if scene in holdout: continue`), before any per-spec top-k selection.
 
-Strategy:
+Runs once. Output is committed alongside the Environment-Level yaml configs at
+data/env_heterogeneity/holdout_alfworld_v1.json (the `_v1` suffix is this artifact's
+dataset revision number, NOT a paper variant). yaml configs reference the file via
+federated.data_sharding.partition.kwargs.holdout_file, which script_builder exports
+as HOLDOUT_FILE and fed_env_manager resolves into the `holdout_scenes` kwarg.
+
+Selection strategy:
   Pick scenes spread across all 4 room types (kitchen, living_room, bedroom,
-  bathroom) so the OOD eval set covers diverse env types. For each room type,
-  pick 2 scenes (1 small, 1 medium) from the train pool.
+  bathroom) so the OOD eval set covers diverse environment semantics. For each
+  room type, pick `per_room_type` scenes (default 2: one small, one medium by
+  trial count) from the train pool.
 """
 import os
 import json
@@ -113,6 +123,11 @@ def main(holdout_seed: int = 99999, per_room_type: int = 2):
     total_holdout_specs = len(set().union(*(scene_to_specs[s] for s in holdout)))
 
     output = {
+        # Dataset revision tag for this holdout artifact (revision 1). This is a
+        # bookkeeping field only -- written to the JSON but never read by the runtime
+        # -- and it is unrelated to the paper's Environment-Level "Variant" numbering
+        # (AlfWorld env-level heterogeneity is the `env_disjoint` scene split, which
+        # the paper does not assign a Variant number).
         "version": "v1",
         "seed": holdout_seed,
         "n_holdout_scenes": len(holdout),
@@ -122,10 +137,11 @@ def main(holdout_seed: int = 99999, per_room_type: int = 2):
         "per_room_type": per_rt_chosen,
         "per_scene_trial_count": {s: scene_to_count[s] for s in holdout},
         "comment": (
-            "Reserved FloorPlans for OOD env eval. No client training trial in "
-            "these scenes (the env_disjoint partition function applies this filter "
-            "before per-spec top-k selection). Pick covers all 4 room types so OOD "
-            "eval is balanced across env semantics."
+            "Reserved ALFRED FloorPlan scenes for Environment-Level out-of-distribution "
+            "(OOD) evaluation of AlfWorld env-level heterogeneity. No client training "
+            "trial occurs in these scenes (the `env_disjoint` partition function drops "
+            "their trials in Step 1, before any per-spec top-k selection). The pick "
+            "covers all 4 room types so OOD eval is balanced across environment semantics."
         ),
     }
 

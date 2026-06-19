@@ -8,7 +8,12 @@ from pathlib import Path
 import torch
 import torch.distributed as dist
 
-# Add the project root to the Python path.
+# Vestigial sys.path insert. NOTE: Path(__file__).parent is this file's own
+# directory (tools/aggregation/), not the repository root, so this does NOT put
+# the repo on the import path. It is harmless because this script only imports
+# stdlib/torch and never imports repo packages (e.g. `utils.*`). The real repo
+# root is REPO_ROOT below (parents[2]), which is used solely to build the example
+# checkpoint paths in test_dtensor_loading(), not for imports.
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 

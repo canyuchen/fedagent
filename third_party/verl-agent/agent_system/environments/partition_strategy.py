@@ -372,7 +372,12 @@ def preference_partition(
         category_key: name of the field holding the category label.
         start_idx: starting index into `data` (used to skip a validation set, etc.).
         tau: heterogeneity parameter controlling the variance of the per-client
-            category distribution.
+            category distribution. LEGACY ALIAS of the canonical preference
+            knob omega (paper symbol omega); forwarded as `tau=` and resolved
+            downstream via `if omega is None: omega = tau`. NOTE: this 'tau' is
+            the preference knob and is UNRELATED to the paper's task-descriptor
+            tau. (Renaming the kwarg itself is a separate risky change — see the
+            risky-rename note.)
         data_type: data type ('generic', 'webshop', 'alfworld').
         **kwargs: additional strategy-specific parameters.
 
@@ -1630,8 +1635,22 @@ Partition strategy usage examples:
 
 
 # ============================================================
-# Env-level heterogeneity: distractor-disjoint partition
-#   See docs/heterogeneity.md for design
+# Environment-Level Heterogeneity (WebShop): distractor-disjoint catalog partition
+#   This is paper Variant 1 = "Catalog Split" (Transition-pipeline Stage 1),
+#   built by paper Algorithm 1 (CatalogSplitPartition).
+#   strategy key: 'distractor_disjoint'  ->  SimServer override: catalog_filter_asins.
+#
+#   NAMING WARNING: in this codebase this function is the "v4 algo" / "v4"
+#   catalog impl. "v4"/"v5" here are IMPLEMENTATION-REVISION numbers of the
+#   Catalog-Split partitioner, NOT the paper's Variant 4 / Variant 5. This v4
+#   impl is LEGACY/superseded: all clients share goals[500:], the catalog
+#   protects ALL training target ASINs, and the distractor pool is the single
+#   shared ~585-item set. The CURRENT impl the paper uses for Catalog Split is
+#   _distractor_disjoint_partition_webshop_v5 (strategy key 'catalog_split').
+#   Both implement the SAME paper Variant 1; they are UNRELATED to paper
+#   Variant 4 (Lookalike Injection, lookalike_injection) and Variant 5
+#   (Rank Wrapper, rank_wrapper).
+#   See docs/heterogeneity.md for design.
 # ============================================================
 def _distractor_disjoint_partition_webshop(
     products: List[Dict[str, Any]],
@@ -1741,7 +1760,17 @@ def _distractor_disjoint_partition_webshop(
 
 
 # ============================================================
-# Catalog-Split: per-client target floor distractor disjoint
+# Catalog-Split (CURRENT impl): per-client target-floor distractor disjoint.
+#   This is the live realization of paper Variant 1 = "Catalog Split"
+#   (Transition-pipeline Stage 1), built by paper Algorithm 1.
+#   strategy key: 'catalog_split'  ->  SimServer overrides:
+#       catalog_filter_asins AND client_goal_idxs.
+#
+#   NAMING WARNING: this is the "v5 algo" / "v5" catalog impl. "v5" is an
+#   IMPLEMENTATION-REVISION number of the Catalog-Split partitioner; it is NOT
+#   the paper's Variant 5 (Rank Wrapper). It supersedes the v4 impl
+#   (_distractor_disjoint_partition_webshop, key 'distractor_disjoint'); both
+#   implement the SAME paper Variant 1.
 # See docs/heterogeneity.md
 # ============================================================
 def _generate_goal_asins_for_partition(
@@ -1750,8 +1779,10 @@ def _generate_goal_asins_for_partition(
 ) -> List[str]:
     """Mimics get_synthetic_goals iteration order; returns asin list (one entry per goal).
 
-    Used by v5 partition to compute per-client client_target_asins without
-    running the full SimServer goal generation. Iteration order must match
+    Used by the current Catalog-Split partition
+    (_distractor_disjoint_partition_webshop_v5; '_v5' = impl revision, paper
+    Variant 1 — NOT paper Variant 5) to compute per-client client_target_asins
+    without running the full SimServer goal generation. Iteration order must match
     webshop/web_agent_site/engine/goal.py:get_synthetic_goals so that the i-th
     goal in this list maps to the i-th goal SimServer will see.
 
@@ -1803,20 +1834,32 @@ def _distractor_disjoint_partition_webshop_v5(
     start_idx: int = 500,
     **kwargs,
 ) -> Tuple[List[str], List[int]]:
-    """v5: WebShop env-level partition — per-client target floor distractor disjoint.
+    """WebShop env-level partition (CURRENT impl) — per-client target floor distractor disjoint.
 
-    v5 vs v4:
-      - v4 (`_distractor_disjoint_partition_webshop`):
-          All clients share goals[500:] (~6410 goals); the catalog protects *all*
-          415 training target ASINs; distractor_pool = 1000 - 415 = 585.
-      - v5 (this function):
-          Each client gets a ~100-goal slice cut by uniform_partition; the catalog
-          protects *this client's* ~50-80 target ASINs;
-          distractor_pool = 1000 - per_client_target ≈ 920.
+    PAPER ANCHOR: this is the implementation of the paper's Environment-Level
+    *Variant 1 = Catalog Split* (Stage 1, content/catalog axis of the transition
+    pipeline; paper Algorithm 1 'CatalogSplitPartition'). Selected via partition
+    strategy key `catalog_split` (env var PARTITION_STRATEGY='catalog_split'),
+    dispatched in fed_env_manager.py; knobs env_div, keep_ratio.
+
+    NAMING CAUTION: the trailing '_v5' / the 'v4' and 'v5' tags below are
+    *implementation-revision numbers of this Catalog-Split partition function*,
+    NOT the paper's Variant 4 (Lookalike Injection) or Variant 5 (Rank Wrapper).
+    Both revisions implement the SAME paper Variant 1 (Catalog Split):
+      - 'v4' = `_distractor_disjoint_partition_webshop` (strategy key
+        `distractor_disjoint`): LEGACY / superseded revision. All clients share
+        goals[500:] (~6410 goals); the catalog protects *all* ~415 training
+        target ASINs (full-target floor); distractor_pool = 1000 - ~415 = ~585
+        shared across clients.
+      - 'v5' = this function (strategy key `catalog_split`): CURRENT revision used
+        for the reported Catalog-Split numbers. Each client gets a ~100-goal
+        slice cut by uniform_partition; the catalog protects only *this client's*
+        ~50-80 target ASINs (per-client floor);
+        distractor_pool = 1000 - per_client_target ≈ 920 (per-client).
           → The full pairwise-Jaccard range widens from [1.000, 0.746] to
             [0.819, 0.464], strengthening the env_div signal by +40%, while the
             task partition stays strictly consistent with the main experiment
-            (uniform_100/client).
+            (uniform 100/client).
 
     Args:
       products: list of raw product dicts (from items_shuffle_1000.json, before
@@ -1825,10 +1868,13 @@ def _distractor_disjoint_partition_webshop_v5(
       client_id, client_num: federated args.
       min_goals_per_client: minimum number of goals per client; used by
                             uniform_partition for the task split.
-      env_div, keep_ratio: env-heterogeneity knobs (same as v4).
-      holdout_distractor_asins: optional holdout list (not passed by the current
-                                v3/v4/v5 sweeps).
-      base_seed: RNG seed (default 42, same as v4).
+      env_div, keep_ratio: env-heterogeneity knobs (identical meaning to the
+                            legacy distractor_disjoint / 'v4' revision).
+      holdout_distractor_asins: optional holdout list of distractor ASINs reserved
+                                for OOD eval (not passed by the current
+                                Catalog-Split sweeps; the 'v3/v4/v5' tags are
+                                partition-impl revision numbers, NOT paper variants).
+      base_seed: RNG seed (default 42, same as the legacy 'v4' revision).
       start_idx: start of the training pool (default 500; goals[0:500] are val).
 
     Returns:
@@ -1838,7 +1884,9 @@ def _distractor_disjoint_partition_webshop_v5(
                         the start_idx offset).
                         e.g. for client 0 with min_goals_per_client=100, returns [500, 501, ..., 599].
                         webshop/envs.py assigns this to self.goal_idxs (replacing
-                        v4's list(range(500, len(goals)))).
+                        the legacy distractor_disjoint code path's hardcoded
+                        list(range(500, len(goals))) at envs.py, which all clients
+                        shared).
     """
     holdout = set(holdout_distractor_asins or [])
 
@@ -1896,7 +1944,8 @@ def _distractor_disjoint_partition_webshop_v5(
     distractor_pool = sorted((set(all_asins_sorted) - client_target_asins) - holdout)
     D = len(distractor_pool)
 
-    # Step 5: ASIN-level u/v dictionaries (the key v5 technique).
+    # Step 5: ASIN-level u/v dictionaries (the key change in the current
+    # Catalog-Split revision, i.e. what '_v5' refers to — NOT paper Variant 5).
     # WARNING: each client's distractor_pool has different content/length (their
     #   targets differ).
     # → We cannot simply do proto_rng.random(D) and index by distractor_pool
@@ -1915,7 +1964,8 @@ def _distractor_disjoint_partition_webshop_v5(
     u = np.array([asin_to_u[a] for a in distractor_pool])
     v = np.array([asin_to_v[a] for a in distractor_pool])
 
-    # Step 6: weighted blend + top-k (same shape as v4).
+    # Step 6: weighted blend + top-k (identical selection math to the legacy
+    # distractor_disjoint / 'v4' revision; 'v4' = revision number, not paper Variant 4).
     e = (1.0 - env_div) * u + env_div * v
     n_keep = int(round(keep_ratio * D))
     chosen_idx = np.argsort(e)[:n_keep]
@@ -1941,8 +1991,18 @@ def _distractor_disjoint_partition_webshop_v5(
 
 
 # ============================================================
-# Transition-level env heterogeneity: BM25 variant disjoint
-# See docs/heterogeneity.md (BM25 Reweighting).
+# Environment-Level Heterogeneity (WebShop): BM25-variant search index/score
+# strategy key: 'bm25_variant'  ->  SimServer override: bm25_in_memory_config.
+# Dispatched by paper Algorithm 2 (EnvVariantPartition). This ONE function
+# serves TWO paper variants, selected by the BM25_VARIANT_POOL env var:
+#   * default pool (BM25_VARIANTS_DEFAULT)  -> paper Variant 3 "BM25 Reweighting"
+#                                              (Stage 3 matching/score; sweeps k1/b).
+#   * BM25_VARIANT_POOL=fields_only         -> paper Variant 2 "Field-Subset Index"
+#                                              (Stage 2 encoding/index; varies the
+#                                               field subset, fixed k1/b).
+# (config keys: bm25_reweighting = V3 default pool; field_subset_index = V2 +
+#  variant_pool=fields_only.)
+# See docs/heterogeneity.md (BM25 Reweighting / Field-Subset Index).
 #
 # Each client is deterministically assigned (by client_id) to one of N
 # (fields, k1, b) BM25 configs. SimServer in that client's worker swaps
@@ -1997,8 +2057,10 @@ def _bm25_variant_partition_webshop(
     will route through InMemoryBM25Searcher with these settings.
 
     Variant pool selection (lowest precedence first):
-      1. BM25_VARIANTS_DEFAULT  -- BM25 Reweighting (extreme k1/b on full fields)
-      2. env BM25_VARIANT_POOL=fields_only -- Field-Subset Index (field-subset on default k1/b)
+      1. BM25_VARIANTS_DEFAULT  -- paper Variant 3 "BM25 Reweighting"
+         (Stage 3; extreme k1/b on full fields; config key bm25_reweighting)
+      2. env BM25_VARIANT_POOL=fields_only -- paper Variant 2 "Field-Subset Index"
+         (Stage 2; field-subset on default k1/b; config key field_subset_index)
       3. explicit `variants=` kwarg
 
     Assignment is deterministic by client_id so repeated launches converge
@@ -2030,7 +2092,14 @@ def _bm25_variant_partition_webshop(
 
 
 # ============================================================
-# Transition-level env heterogeneity: Lookalike Injection (lookalike adversarial)
+# Environment-Level Heterogeneity (WebShop): Lookalike Injection (adversarial)
+#   This is paper Variant 4 = "Lookalike Injection", which spans
+#   Transition-pipeline Stages 1+3 (catalog content injection + matching/score),
+#   NOT Stage 4 — variant-number does NOT equal stage-number here.
+#   Dispatched by paper Algorithm 2 (EnvVariantPartition).
+#   strategy key: 'lookalike_injection'  ->  SimServer override: extra_products.
+#   (Unrelated to the "v4 algo" Catalog-Split impl above; that v4 is an
+#    impl-revision tag for paper Variant 1, not this paper Variant 4.)
 # See docs/heterogeneity.md
 #
 # Each client deterministically assigned (by client_id) to one of N attribute-
@@ -2071,6 +2140,9 @@ def _lookalike_injection_partition_webshop(
 ):
     """Return this client's adversarial lookalike list (raw products).
 
+    Implements paper Variant 4 "Lookalike Injection" (Transition-pipeline
+    Stages 1+3, NOT Stage 4); strategy key 'lookalike_injection'.
+
     The list is suitable as `env_kwargs['extra_products']` — SimServer will
     append it to the base 1000-product catalog before BM25 indexing.
 
@@ -2103,7 +2175,12 @@ def _lookalike_injection_partition_webshop(
 
 
 # ============================================================
-# Transition-level env heterogeneity: search-engine TYPE swap
+# Environment-Level Heterogeneity (WebShop): search-engine TYPE swap
+#   This is paper Variant 5 = "Rank Wrapper" (Transition-pipeline Stage 4,
+#   rendering/ranking); dispatched by paper Algorithm 2 (EnvVariantPartition).
+#   strategy key: 'rank_wrapper'  ->  SimServer override: search_engine_variant.
+#   (Unrelated to the "v5 algo" Catalog-Split impl above; that v5 is an
+#    impl-revision tag for paper Variant 1, not this paper Variant 5.)
 # See docs/heterogeneity.md (search backend axis).
 #
 # Each variant breaks a different baseline-policy assumption:
@@ -2131,6 +2208,9 @@ def _rank_wrapper_partition_webshop(
     variants: Optional[List[Dict[str, Any]]] = None,
 ):
     """Return this client's search-engine variant config.
+
+    Implements paper Variant 5 "Rank Wrapper" (Transition-pipeline Stage 4);
+    strategy key 'rank_wrapper'.
 
     Result is a dict suitable as `env_kwargs['search_engine_variant']` —
     SimServer routes through `init_search_engine(search_engine_variant=...)`

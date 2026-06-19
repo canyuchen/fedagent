@@ -69,17 +69,20 @@ that one axis can be moved without disturbing the other two:
 | Paper name | Code strategy | Filename token | Config kwarg | Exported env var | Endpoints (near-uniform -> extreme) | What it disperses |
 |---|---|---|---|---|---|---|
 | **Preference** (*what kind of task?*) | `preference` | `preference` | `omega` | `OMEGA` (+ `TAU` alias) | `0.01` -> `0.99` | per-client category marginal |
-| **Coverage** (*how many tasks?*) | `coverage` | `coverage` | `size_std` | `SIZE_STD` | `1` -> `256` | per-client pool size |
-| **Hardness** (*how hard are the tasks?*) | `hardness` | `hardness` | `success_std` | `SUCCESS_STD` | `1` -> `256` | per-client success-rate mix |
+| **Coverage** (*how many tasks?*) | `coverage` | `coverage` | `size_std` | `SIZE_STD` | `256` -> `1` | per-client pool size |
+| **Hardness** (*how hard are the tasks?*) | `hardness` | `hardness` | `success_std` | `SUCCESS_STD` | `256` -> `1` | per-client success-rate mix |
 
 > **Naming caveat, read this once and the codebase stops being confusing.**
-> *Preference* heterogeneity is spelled three different ways across the stack:
+> *Preference* heterogeneity differs across the stack only in letter-case, not
+> in spelling:
 > the **code** dispatch strategy is `preference`, the **paper** calls it
 > *Preference*, and the **config filename** uses the token `preference`. They are
-> the same construction. Coverage is consistent everywhere. Hardness keeps its
-> historical misspelling `hardness` in the code and filenames (the paper writes
-> *Hardness*). When you grep, search for `preference` / `coverage` / `hardness`;
-> when you read the paper, translate to *Preference* / *Coverage* / *Hardness*.
+> the same construction. Coverage is consistent everywhere. Hardness uses the
+> lowercased token `hardness` in the code and filenames; this is **not** a
+> misspelling — it is exactly the paper's *Hardness*, just lower-cased (the same
+> case-only convention as `preference` and `coverage`), so leave it as-is. When
+> you grep, search for `preference` / `coverage` / `hardness`; when you read the
+> paper, translate to *Preference* / *Coverage* / *Hardness*.
 
 ### Constructions
 
@@ -105,7 +108,11 @@ path rather than a `preference` field).
   concentration collapses and each client is pushed toward a one-hot vertex
   (one client = one category). `omega` is the canonical kwarg; older configs
   that pass only `tau` are aliased to it (`omega` wins if both are present), and
-  the value is clipped into $(10^{-3}, 1-10^{-3})$ before use. Sweep endpoints
+  the value is clipped into $(10^{-3}, 1-10^{-3})$ before use.
+  **Name collision warning:** this legacy `tau` / `TAU` is the *old name of the
+  Preference knob* (now `omega`); it is **not** the paper's task descriptor
+  $\tau$ used elsewhere in this document. Same letters, unrelated meaning —
+  prefer `omega` and treat `tau`/`TAU` purely as a backward-compat alias. Sweep endpoints
   used in the paper: `omega = 0.01` (near-uniform) and `omega = 0.99` (extreme).
 
 - **Coverage, `coverage_partition` (Beta sizes, fixed overlap).**
@@ -113,9 +120,11 @@ path rather than a `preference` field).
   cross-client overlap is held at `overlap_ratio = 1.3`, and the union of client
   pools is kept covering the dataset as far as possible. This changes the
   **spread** of how many tasks each client sees without changing the per-client
-  mean or the global task mixture. `size_std` controls the spread (exported as
-  `SIZE_STD`); endpoints `1` (nearly equal pool sizes) and `256` (extreme size
-  imbalance).
+  mean or the global task mixture. `size_std` (exported as `SIZE_STD`) is, despite
+  its name, the Beta **concentration**, not a standard deviation — *larger* values
+  give *lower* variance, so it sets the spread *inversely*: endpoint `256` = nearly
+  equal pool sizes (near-uniform), endpoint `1` = extreme size imbalance. This
+  matches the paper's Coverage knob $\xi$ ($\xi=256$ near-uniform, $\xi=1$ extreme).
 
 - **Hardness, `hardness_partition` (success-rate quotas).**
   Tasks are first labelled success/fail by a reference checkpoint (the zero-shot
@@ -123,13 +132,22 @@ path rather than a `preference` field).
   "success" tasks drawn from a Normal-shaped distribution over
   `[0, min_goals_per_client]`, and the remainder of its fixed quota is filled
   with random tasks. The number of tasks per client stays constant, only the
-  *difficulty mix* shifts. `success_std` controls the spread (exported as
-  `SUCCESS_STD`); endpoints `1` (uniform difficulty) and `256` (extreme; some
-  clients see almost only solvable tasks, others almost only hard ones).
-  *Prerequisite:* the reference trajectories file is produced by the eval
-  harness, run `bash eval/eval_webshop.sh` (resp. `eval/eval_alfworld.sh`) first
-  to write `output/inference/all_trajectories.json` (resp.
-  `all_trajectories_alfworld.json`), which `hardness_partition` reads by default.
+  *difficulty mix* shifts. `success_std` (exported as `SUCCESS_STD`) is, like
+  Coverage's `size_std`, the Beta **concentration** (not a standard deviation):
+  *larger* = *lower* variance, so endpoint `256` = uniform difficulty (near-uniform)
+  and endpoint `1` = extreme (some clients see almost only solvable tasks, others
+  almost only hard ones). Matches the paper's Hardness knob $\xi'$ ($\xi'=256$
+  near-uniform, $\xi'=1$ extreme).
+  *Prerequisite:* `hardness_partition` reads a difficulty estimate for **every
+  training task** from `output/inference/all_trajectories.json` (WebShop) /
+  `all_trajectories_alfworld.json` (ALFWorld). Generate it by rolling out the
+  reference checkpoint over the **whole training set** with the batch inference
+  scripts (they loop the training pool in 128-task batches and merge the result):
+  `bash eval/batch_webshop_eval.sh` (resp. `eval/batch_alfworld_eval.sh`).
+  The single-shot `eval/eval_webshop.sh` covers only one 128-goal batch, and
+  `eval/eval_alfworld.sh` runs the held-out valid_seen split, so neither labels the
+  full training pool. See [eval/README.md](../eval/README.md) for all eval modes
+  (single-shot, full-training sweep, and validation).
 
 By construction each axis offers (D1) target control of its own dispersion,
 (D2) invariance of the *other* two measures, (D3) factor invariance (the global
@@ -197,11 +215,22 @@ under PPO*; this GRPO->PPO rescue is one of the paper's headline observations.
   goals) plus a per-client *distractor* pool drawn so the catalogs diverge. The
   optimal "search -> click -> buy" behavior is unchanged by *which* products are
   present, so $\pi^\star$ stays essentially invariant; this is the mildest
-  perturbation (Pattern B/C). The `_v5` algorithm differs from the older v4
-  (`distractor_disjoint`): the task partition is `uniform` (100 goals/client,
-  matching the main experiment) and the env partition protects only each
-  client's own targets (~50-80 ASINs) against a ~920-item distractor pool, and
-  it returns explicit `client_goal_idxs` so WebShop no longer hard-codes the
+  perturbation (Pattern B/C).
+
+  *A note on "v4" vs "v5".* These are **implementation-revision numbers of the
+  catalog-partition helper, not paper Variant numbers** — both revisions
+  implement the *same* paper Variant 1 (Catalog Split, Stage 1), and neither has
+  anything to do with the paper's Variant 4 (Lookalike Injection, Stages 1+3) or
+  Variant 5 (Rank Wrapper, Stage 4). The current code key `catalog_split` is
+  served by the v5 helper `_distractor_disjoint_partition_webshop_v5`; the older,
+  superseded code key `distractor_disjoint` is served by the v4 helper
+  `_distractor_disjoint_partition_webshop` and is no longer used by any reported
+  result. The v5 revision differs from the legacy v4 in three ways: (1) the task
+  partition is `uniform` (100 goals/client, matching the main experiment)
+  instead of all clients sharing `goals[500:]`; (2) the env partition protects
+  only each client's own ~50-80 target ASINs against a ~920-item distractor pool
+  (v4 protected all 415 training targets against a 585-item pool); and (3) it
+  returns explicit `client_goal_idxs` so WebShop no longer hard-codes the
   held-out goal range.
   Config kwargs: `env_div` (divergence strength in $[0,1]$),
   `keep_ratio` (per-client distractor density), `search_return_n` (BM25 top-K).

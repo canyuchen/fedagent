@@ -42,6 +42,13 @@ class Aggregator:
             self.logger.error(msg)
             raise RuntimeError(msg)
 
+        # Aggregation rule. 'fedavg' (uniform model averaging) is the default and
+        # is the only rule used for every reported result in the paper. 'fedprox'
+        # is implemented but unused experimentally (it exists solely for the
+        # mu=0.01 ablation). FedProx needs a reference model to anchor its
+        # proximal term, so we pass the previous round's aggregated global model
+        # as `global_model_path`; round 1 has no previous global model, hence the
+        # `round_num > 1` guard (it stays None on the first round).
         aggregation_method = self.config['federated'].get('aggregation_method', 'fedavg')
         global_model_path = None
         if aggregation_method == 'fedprox' and round_num > 1:

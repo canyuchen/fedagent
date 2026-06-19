@@ -191,7 +191,16 @@ class CheckpointManager:
                                            client_id: int, round_num: int):
         """Trim a single client's checkpoint directory, keeping only the latest `global_step`.
 
-        NOTE: currently has no caller; kept for potential reuse (2026-04-18).
+        Generic per-client trim helper: it is NOT specific to any run mode,
+        despite the "Centralized resume epoch mode:" prefix baked into its log
+        lines below. That prefix is misleading here: "Centralized resume epoch
+        mode" is a distinct runtime mode gated by the CENTRALIZED_RESUME_EPOCH
+        env var (used in round_orchestrator.py / script_builder.py /
+        run_federated.py / custom_fed_server.py), and this method is not tied
+        to it. Verified via repo-wide grep that this method currently has NO
+        caller; kept for potential reuse (noted 2026-04-18). If revived, drop
+        or adjust the "Centralized resume epoch mode:" log prefix so the logs
+        are not misleading.
         """
         try:
             global_step_dirs = [d for d in checkpoints_dir.iterdir()

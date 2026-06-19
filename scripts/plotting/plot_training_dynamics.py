@@ -175,6 +175,10 @@ def plot_training_dynamics(
             ax.axvline((r - 1) * stride, color="gray", linestyle="--",
                        alpha=0.35, linewidth=1.0, zorder=0)
         xs = [(r - 1) * stride for r, _ in agg]
+        # --with-clients lays rounds end-to-end on one synthetic x-axis: round r
+        # starts at x=(r-1)*stride and each client's local-step index is added on
+        # top, so per-client segments fan out within the round's width (`stride`).
+        # This is a plotting layout only; it is not a real global training-step count.
         ax.set_xlabel("Training step (rounds tiled by local steps)", fontsize=14)
     else:
         xs = [r for r, _ in agg]

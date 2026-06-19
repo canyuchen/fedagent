@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 """Generate the uniform config matrix.
 
-Layout: config/uniform/[model]/[variant]/[algo]/fed_{task}_{algo}_*.yaml
-  4 models × 7 variants × 2 algos × 2 tasks = 112 yamls.
+Layout: config/uniform/[model]/[config_group]/[algo]/fed_{task}_{algo}_*.yaml
+  4 models × 7 config groups × 2 algos × 2 tasks = 112 yamls.
+
+NOTE on terminology: the seven '[config_group]' subdirectories here
+(main, main_seed1, main_seed2, centralized, local_client1/2/3) are
+TRAINING-PROTOCOL / BASELINE configs, all on the uniform (IID) partition.
+They are NOT the paper's environment-level 'Variants' (V1 Catalog Split ...
+V5 Rank Wrapper), which are a separate axis that lives under
+config/env_heterogeneity/. We avoid the word 'variant' below for exactly this
+reason. Mapping to the paper: 'main*' = the FedAgent runs (N=100, M=2, T=70,
+E=3); 'centralized' = the Centralized Agent Training baseline; 'local_client*'
+= the Local Agent Training baseline.
 
 The existing Qwen2.5-1.5B-Instruct/main/{grpo,ppo}/*.yaml (4 files) are kept as
 the templates; they are also re-generated here so 'main' is consistent with the
-other variants.
+other config groups.
 
 Run from repo root:
     python3 tools/generate_uniform_configs.py            # dry-run, preview diff
@@ -108,9 +118,14 @@ MODELS: dict[str, dict[str, Any]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Per-variant federation structure
-# total optim work = 70 rounds × 3 ep = 210 epochs per client in 'main';
-# centralized & local_client* match this by 1 round × 210 ep.
+# Per-config-group federation structure (all on the uniform/IID partition).
+# Paper mapping: 'main*' = FedAgent (N=100 clients, M=2 selected/round,
+#   T=70 rounds, E=3 local epochs/client); 'centralized' = Centralized Agent
+#   Training baseline; 'local_client*' = Local Agent Training baseline.
+# Total optimization work is held constant across groups: 70 rounds × 3 ep
+#   = 210 local epochs/client in 'main'; centralized & local_client* match
+#   that same 210-epoch budget via 1 round × 210 ep.
+# (These are NOT the paper's env-level Variants V1..V5; see module docstring.)
 # ---------------------------------------------------------------------------
 VARIANTS: dict[str, dict[str, Any]] = {
     "main": {
@@ -133,6 +148,10 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "partition_strategy": "uniform", "partition_kwargs": None,
         "shuffle_seed": None,
     },
+    # local_client1/2/3 = the paper's "Local Agent Training" baseline: a single
+    # client trained in isolation (1 round × 210 epochs, no aggregation). The
+    # 'uniform_single' strategy hands that one client the cl_id-th uniform shard;
+    # cl_id in {21, 42, 84} are the three fixed clients reported as Local seeds.
     "local_client1": {
         "total_clients": 100, "clients_per_round": 1, "total_rounds": 1, "epochs_per_client": 210,
         "partition_strategy": "uniform_single", "partition_kwargs": {"cl_id": 21},

@@ -18,7 +18,12 @@
 # Notes:
 #   - Evaluation always runs on the STANDARD (unperturbed) environment so the
 #     metric isolates post-aggregation generalization (see docs/reproducing.md).
-#   - WebShop test set: goals[0:500]; ALFWorld: valid_seen + valid_unseen.
+#   - ALFWorld (eval/eval_alfworld.sh): the held-out valid_seen split.
+#   - WebShop (eval/eval_webshop.sh): a slice of the TRAINING pool (goals[500:],
+#     via infer_special) for a trajectory dump; this is NOT a held-out test number.
+#     The reported WebShop val/success_rate is the in-training validation on the
+#     held-out goals[0:500]. For the full training pool (used by the `hardness`
+#     partition) run eval/batch_webshop_eval.sh.
 #
 set -euo pipefail
 

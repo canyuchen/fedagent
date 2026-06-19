@@ -17,7 +17,13 @@ print(conf$1)
 project_root=$(read_yaml_path "['project_root']")
 verl_agent_repo=$(read_yaml_path "['repo']['verl_agent']")
 
-train_data_size=128 # match GRPO and GiGPO configuration (16 x 8)
+# PPO has no GRPO/GiGPO group dimension (no rollout group_size), so train_data_size
+# alone sets the number of trajectories collected per iteration. 128 is chosen to match
+# the total rollout budget of the upstream verl-agent GiGPO config, which collects
+# train_data_size=16 x group_size=8 = 128 trajectories. NOTE: this repo's own GRPO
+# alfworld script now uses train_data_size=8 x group_size=8 = 64, so the "(16 x 8)"
+# figure is the original upstream reference, not this fork's current GRPO setting.
+train_data_size=128
 val_data_size=128
 
 cd ${verl_agent_repo}
