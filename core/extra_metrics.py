@@ -22,12 +22,13 @@ except ImportError:
 #                          for WebShop this is the same Task Score signal under the
 #                          generic verl-agent key 'test_score/<data_source>'.
 # Note: these key strings are wired across yaml/python/verl-agent, so treat them as
-# fixed runtime keys rather than free-form labels. (KNOWN TYPO, left unfixed: the
-# call_test_score() dispatcher below matches the type string 'tes_score/text' -- a
-# misspelling of 'test_score' plus a hard-coded 'text' data source -- whereas the
-# producer emits 'val/test_score/<data_source>'. Verify before relying on test_score
-# in the FederatedScope metrics path; this path is separate from the live
-# main_ppo_fed training loop, so it does not affect the paper's reported numbers.)
+# fixed runtime keys rather than free-form labels. The test_score key is
+# 'test_score/<data_source>', where <data_source> is the data-preprocessing --mode
+# (here 'text'; see examples/data_preprocess/prepare.py, which sets
+# data_source = args.mode), so it reads as 'test_score/text' and matches verl's
+# producer ('val/test_score/text', ray_trainer_fed.py). This module is the
+# FederatedScope metrics path, separate from the live main_ppo_fed training loop,
+# so it does not affect the paper's reported numbers.
 def eval_webshop_task_score(ctx, **kwargs):
     return ctx.webshop_task_score
 
@@ -76,8 +77,8 @@ def call_webshop_task_score(types):
         return "webshop_task_score", eval_webshop_task_score, True  # third arg: higher-is-better
 
 def call_test_score(types):
-    if "tes_score/text" in types:
-        return "tes_score/text", eval_test_score, True  # third arg: higher-is-better
+    if "test_score/text" in types:
+        return "test_score/text", eval_test_score, True  # third arg: higher-is-better
 
 def call_success_rate(types):
     if "success_rate" in types:
@@ -110,7 +111,7 @@ def call_pick_cool_then_place_in_recep_success_rate(types):
 
 # Register every metric with the FederatedScope metric registry.
 register_metric("webshop_task_score", call_webshop_task_score)
-register_metric("tes_score/text", call_test_score)
+register_metric("test_score/text", call_test_score)
 register_metric("success_rate", call_success_rate)
 
 # Register the ALFWorld per-task-type Success Rate metrics defined above

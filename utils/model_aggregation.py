@@ -321,13 +321,18 @@ class ModelAggregator:
                 # Build the DTensor-sharded state dict.
                 dtensor_state_dict = {}
                 for key, tensor in rank_states[rank].items():
-                    # Convert the plain tensor into a DTensor.
+                    # Convert the plain tensor into a DTensor. The placement MUST match
+                    # the dimension this parameter was sliced along above: lm_head.weight
+                    # is sharded along dim 1 (column slice, param[:, start:end]); every
+                    # other parameter is sharded along dim 0. A mismatch here mislabels
+                    # the shard and corrupts the weight when the DTensor is later gathered
+                    # or resharded (e.g. on FSDP resume for an untied lm_head).
                     if len(tensor.shape) > 0:  # Non-scalar parameter.
-                        # Create the DTensor using the Shard placement strategy.
+                        shard_dim = 1 if "lm_head.weight" in key else 0
                         dtensor = DTensor.from_local(
                             tensor,
                             device_mesh,
-                            [Shard(0)]  # Shard along the first dimension.
+                            [Shard(shard_dim)]
                         )
                         dtensor_state_dict[key] = dtensor
                     else:  # Scalar parameter.

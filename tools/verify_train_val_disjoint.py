@@ -246,8 +246,9 @@ def main() -> int:
     )
     ap.add_argument("--skip-webshop", action="store_true")
     ap.add_argument("--skip-alfworld", action="store_true")
-    ap.add_argument("--webshop-val-size", type=int, default=128,
-                    help="Webshop val goal count (default: 128 — matches uniform yaml)")
+    ap.add_argument("--webshop-val-size", type=int, default=64,
+                    help="Webshop val goal count = held-out val pool [0, size); default 64 "
+                         "matches the uniform yaml val_data_size / verl.data.val_batch_size")
     ap.add_argument("--webshop-clients", type=int, default=4,
                     help="N total clients in uniform partition (default: 4)")
     ap.add_argument("--webshop-min-per-client", type=int, default=100,
