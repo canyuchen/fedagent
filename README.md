@@ -35,8 +35,9 @@
 ## Overview
 
 FedAgent is a library for **federated RL training of LLM agents**.
-It implements a federated training server with **FedAvg/FedProx** aggregation,
-a **two-level heterogeneity suite** (task vs environment partitioning), and
+It implements a federated training server with **FedAvg** aggregation (plus
+optional client-side **FedProx**), a **two-level heterogeneity suite** (task vs
+environment partitioning), and
 federated **PPO/GRPO** trainers built on
 [verl-agent](https://github.com/langfengQ/verl-agent).
 You can reproduce the paper's experiments or extend the framework with your own
@@ -58,8 +59,9 @@ the full construction.
 - **Two-level heterogeneity suite** — task-level (Preference / Coverage /
   Hardness) and environment-level (5 WebShop transition variants), the first
   systematic decomposition for agent FL
-- **FedAvg / FedProx aggregation** with FSDP-sharded model support, pluggable
-  for custom strategies
+- **FedAvg aggregation** with FSDP-sharded model support, pluggable for custom
+  rules, plus optional **client-side FedProx** (a proximal term added to local
+  training, not a server rule)
 - Fully configurable federation protocol (clients `N`, clients/round `M`,
   local epochs `E`, rounds `T`, tasks/client `|Xᵢ|`) with ready-made sweeps
 - Any HuggingFace backbone (paper uses Qwen2.5-1.5B/3B/7B-Instruct,
@@ -88,7 +90,7 @@ fedagent/
 ├── .env.example               # optional environment variables (W&B removed)
 ├── .gitignore
 ├── core/                      # federated server + aggregation + trainers (contribution)
-├── utils/                     # model aggregation (FedAvg / FedProx, incl. FSDP)
+├── utils/                     # model aggregation (FedAvg, incl. FSDP)
 ├── tools/                     # run_federated.py, resolve_paths.py, checkpoint monitor
 │   └── aggregation/           # aggregation verification / diagnostic toolbox
 ├── scripts/                   # setup_env.sh, runners, verl-agent base launch scripts
@@ -114,7 +116,7 @@ tree (verl-agent imports/runs them). Everything else under
 ```text
 fedagent/                                       ── first-party (this work) ──
 ├── core/                 control plane: federated server, round orchestration, aggregation
-├── utils/                model aggregation (FedAvg / FedProx, incl. FSDP)
+├── utils/                model aggregation (FedAvg, incl. FSDP)
 ├── tools/                run_federated.py, resolve_paths.py, aggregation/, env_heterogeneity/, monitor/
 ├── eval/                 checkpoint evaluation + trajectory collection
 ├── scripts/              setup_env.sh, federated runners, verl-agent launchers, plotting/
