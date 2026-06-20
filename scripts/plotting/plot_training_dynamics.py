@@ -2,8 +2,9 @@
 """Plot aggregated (federated) performance training dynamics from a run's logs.
 
 Reads the per-round / per-client metric logs written under an experiment
-directory and plots the aggregated (global FedAvg model) trajectory over
-training rounds. Two modes:
+directory and plots the aggregated (global FedAvg model) trajectory on a
+cumulative training-epoch x-axis. Round N enters at epoch (N-1)*ep-per-cl, so
+an ``ep-per-cl-3`` run over 70 rounds spans 0..210. Two modes:
 
     (default)        aggregated curve only
     --with-clients   additionally overlay each client's per-round local
@@ -35,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -79,18 +81,29 @@ def _round_index(round_name: str) -> int:
     return int(round_name.split("_")[1])
 
 
-def infer_round_stride(data: Experiment) -> int:
-    """X-axis stride (steps per round) so rounds tile without overlap.
+def infer_round_stride(folder, data: Optional[Experiment] = None) -> int:
+    """Training epochs per round = the x-axis stride between consecutive rounds.
 
-    Equal to (max local step observed in any client/round) + 1, floored at 1.
-    Only used by --with-clients to place per-client local steps inside a round.
+    Read from ``ep-per-cl-N`` in the run folder name (the number of local epochs
+    each client trains per round), matching the convention used by the project's
+    canonical comparison plots. Round N's local step 0 is the *pre-training* eval
+    of the model entering the round — a round boundary shared with round N-1's
+    end, not a training epoch — so the stride is the count of post-step-0 epochs
+    (``ep-per-cl``), NOT max_step + 1. With ``ep-per-cl-3`` over 70 rounds the
+    axis spans 0..210.
+
+    Falls back to the max local step observed across the logs when the folder
+    name carries no ``ep-per-cl-N`` token.
     """
+    m = re.search(r"ep-per-cl-(\d+)", str(folder))
+    if m:
+        return max(int(m.group(1)), 1)
     max_step = 0
-    for round_data in data.values():
+    for round_data in (data or {}).values():
         for client_data in round_data.values():
             for step_data in client_data:
                 max_step = max(max_step, int(step_data.get("step", 0)))
-    return max(max_step + 1, 1)
+    return max(max_step, 1)
 
 
 def aggregated_curve(data: Experiment, metric: str) -> List[Tuple[int, float]]:
@@ -142,12 +155,17 @@ def plot_training_dynamics(
     if not agg:
         raise ValueError(f"no step-0 values for metric '{metric}' in {folder}")
 
+    stride = round_stride if round_stride is not None else infer_round_stride(folder, data)
     scale = 100.0 if as_percent else 1.0
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    # Cumulative training-epoch x position of each round: round N's step-0
+    # (pre-training) model sits at epoch (N-1)*stride, with stride = ep-per-cl
+    # local epochs per round. Consecutive rounds share their boundary epoch, so a
+    # 70-round ep-per-cl-3 run spans 0..210. Raw logged values only — no padding.
+    agg_xy = {r: ((r - 1) * stride, v) for r, v in agg}
+
     if with_clients:
-        stride = round_stride if round_stride is not None else infer_round_stride(data)
-        agg_xy = {r: ((r - 1) * stride, v) for r, v in agg}
         clients = sorted({int(c.split("_")[1]) for rd in data.values() for c in rd})
         palette = plt.cm.tab20(np.linspace(0, 1, max(len(clients), 1)))
         cmap = {c: palette[i % len(palette)] for i, c in enumerate(clients)}
@@ -171,23 +189,20 @@ def plot_training_dynamics(
                     [x_agg + step], [y_client * scale], marker="o", markersize=6,
                     linestyle="None", color=cmap[c], alpha=0.7, zorder=2,
                 )
-        for r in range(2, max(agg_xy) + 1):  # round boundaries
-            ax.axvline((r - 1) * stride, color="gray", linestyle="--",
+        for r in sorted(agg_xy)[1:]:  # round boundaries
+            ax.axvline(agg_xy[r][0], color="gray", linestyle="--",
                        alpha=0.35, linewidth=1.0, zorder=0)
-        xs = [(r - 1) * stride for r, _ in agg]
-        # --with-clients lays rounds end-to-end on one synthetic x-axis: round r
-        # starts at x=(r-1)*stride and each client's local-step index is added on
-        # top, so per-client segments fan out within the round's width (`stride`).
-        # This is a plotting layout only; it is not a real global training-step count.
-        ax.set_xlabel("Training step (rounds tiled by local steps)", fontsize=14)
-    else:
-        xs = [r for r, _ in agg]
-        ax.set_xlabel("Round", fontsize=14)
 
+    xs = [agg_xy[r][0] for r, _ in agg]
     ys = [v * scale for _, v in agg]
     ax.plot(xs, ys, marker="s", linewidth=3.0, markersize=8, color="tab:red",
             label="Aggregated (global model)", zorder=3)
 
+    ax.set_xlabel("Training Epoch", fontsize=14)
+    x_max = max(xs) if xs else 0
+    if x_max >= 60:
+        ax.set_xticks(list(range(0, int(x_max) + 1, 30)))
+    ax.set_xlim(left=0)
     ax.set_ylabel(metric + (" (%)" if as_percent else ""), fontsize=14)
     ax.set_title(title or Path(folder).name, fontsize=14, fontweight="bold")
     ax.grid(True, alpha=0.3)
@@ -221,8 +236,8 @@ def main() -> None:
     ap.add_argument("--out", default=None,
                     help="output figure path (.pdf; a matching .png is written too)")
     ap.add_argument("--round-stride", type=int, default=None,
-                    help="x-axis steps per round for --with-clients "
-                         "(default: inferred from the logs)")
+                    help="training epochs per round = x-axis stride between rounds "
+                         "(default: ep-per-cl-N parsed from the run dir name)")
     ap.add_argument("--percent", action="store_true",
                     help="scale the metric to a percentage (x100)")
     ap.add_argument("--title", default=None, help="figure title (default: run dir name)")
