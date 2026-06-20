@@ -466,8 +466,8 @@ average-of-clients ground truth:
 - `tools/aggregation/fix_dtensor_loading.py`, DTensor-loading helper for
   reading sharded checkpoints saved under newer PyTorch.
 
-Then add a regression test under `tests/` covering the new rule (`tests/` has no
-aggregation test yet; `tools/aggregation/check_aggregation.py` and
+Then add a regression check under `tools/heterogeneity_test/` covering the new rule
+(it has no aggregation test yet; `tools/aggregation/check_aggregation.py` and
 `tools/aggregation/verify_aggregation.py` are the existing correctness checks to
 model it on).
 

@@ -50,7 +50,7 @@ fedagent/
 │
 ├── eval/                             eval_{webshop,alfworld}.sh, merge_trajectories.py, view_results.py
 ├── scripts/                          setup_env.sh, runners, verl-agent launch scripts, plotting/
-├── tests/heterogenous/               partition simulations + test_alfworld_fed.py
+├── tools/heterogeneity_test/         partition simulations + test_alfworld_fed.py
 ├── config/, docs/                    experiment configs (W&B stripped) + docs
 │
 └── third_party/verl-agent/          ── vendored upstream (Apache-2.0) ──────────
@@ -85,7 +85,7 @@ fedagent/
 | `tools/monitor/checkpoint_monitor.py` | Live run / checkpoint health monitor. |
 | `eval/` | Checkpoint evaluation and trajectory collection (`eval_*.sh`, `merge_trajectories.py`, `view_results.py`). |
 | `scripts/` | `setup_env.sh`, the federated runners, the verl-agent base launch scripts, and `plotting/`. |
-| `tests/heterogenous/` | Partition-strategy simulations and a federated-sharding smoke test. |
+| `tools/heterogeneity_test/` | Partition-strategy simulations and a federated-sharding smoke test. |
 | `config/`, `docs/` | Curated experiment configs (W&B stripped) and user documentation. |
 
 ## Layer 2, In-framework hooks (first-party, inside `third_party/verl-agent/`)

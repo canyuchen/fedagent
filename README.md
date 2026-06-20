@@ -98,7 +98,6 @@ fedagent/
 │   ├── paths.yaml.example     # path template consumed by tools/resolve_paths.py
 │   └── example.yaml           # fully annotated example config
 ├── docs/                      # user-facing documentation (see below)
-├── tests/                     # partition demos + conversion utilities
 ├── eval/                      # checkpoint evaluation + trajectory collection
 └── third_party/
     └── verl-agent/            # vendored upstream (Apache-2.0), no bundled 5.6 GB data
@@ -117,10 +116,9 @@ tree (verl-agent imports/runs them). Everything else under
 fedagent/                                       ── first-party (this work) ──
 ├── core/                 control plane: federated server, round orchestration, aggregation
 ├── utils/                model aggregation (FedAvg, incl. FSDP)
-├── tools/                run_federated.py, resolve_paths.py, aggregation/, env_heterogeneity/, monitor/
+├── tools/                run_federated.py, resolve_paths.py, aggregation/, env_heterogeneity/, heterogeneity_test/, monitor/
 ├── eval/                 checkpoint evaluation + trajectory collection
 ├── scripts/              setup_env.sh, federated runners, verl-agent launchers, plotting/
-├── tests/heterogenous/   partition simulations + sharding smoke test
 ├── config/, docs/        experiment configs (W&B stripped) + documentation
 │
 └── third_party/verl-agent/    ── vendored upstream (Apache-2.0); our hooks woven in ──
