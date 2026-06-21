@@ -77,6 +77,7 @@ DEFAULTS = {
     "keep_ratio": 0.7,                      # catalog-split distractor density
     "min_goals_per_client": 100,
     "service_health_timeout": 900,          # seconds to wait for a service /health
+    "fedprox_mu": 0.0,                       # >0 => FedProx proximal term (else FedAvg)
 }
 
 
@@ -275,6 +276,10 @@ def run_client(cfg, round_num: int, client_id: int, model_path: str,
         f"trainer.experiment_name=round{round_num}_client{client_id}",
     ]
     cmd += [str(o) for o in (cfg.client_overrides or [])]   # env-specific Hydra overrides
+    if cfg.get("fedprox_mu", 0) and cfg.fedprox_mu > 0:
+        # run FedProx's patch in every Ray worker (incl. the actor-engine worker, which is
+        # a separate process from the agent-loop workers); gated on the FEDPROX_MU env var.
+        cmd.append("+ray_kwargs.ray_init.runtime_env.worker_process_setup_hook=fedagent.fedprox.worker_setup")
     env = dict(env_base)
     # distinct, reproducible env instances per client (AgenticDataset reads this);
     # round-invariant so a client's task distribution is stable across rounds.
@@ -282,6 +287,9 @@ def run_client(cfg, round_num: int, client_id: int, model_path: str,
     if cfg.env_kind == "webshop":
         # talk to THIS client's WebShop service (its disjoint Catalog-Split env)
         env["WEBSHOP_SERVICE_URL"] = webshop_service_url(cfg, client_id)
+    if cfg.get("fedprox_mu", 0) and cfg.fedprox_mu > 0:
+        # FedProx: the worker_process_setup_hook reads this and patches optimizer_step
+        env["FEDPROX_MU"] = str(cfg.fedprox_mu)
 
     log_path = ckpt_root.parent / "training.log"
     rc = stream(cmd, env, log_path, tag=f"r{round_num}c{client_id}")
@@ -448,6 +456,12 @@ def load_cfg(args) -> "OmegaConf":
     if args.clients is not None:
         cfg.total_clients = args.clients
         cfg.clients_per_round = min(cfg.clients_per_round, args.clients)
+    if getattr(args, "base_seed", None) is not None:
+        cfg.base_seed = args.base_seed
+    if getattr(args, "port_base", None) is not None:
+        cfg.webshop_base_port = args.port_base
+    if getattr(args, "fedprox_mu", None) is not None:
+        cfg.fedprox_mu = args.fedprox_mu
     # resolve package-relative paths (so configs can use e.g. config/envs/webshop.yaml)
     for key in ("env_spec", "custom_cls_path", "agent_config_path", "webshop_run_service"):
         v = cfg.get(key)
@@ -463,6 +477,9 @@ def main():
     ap.add_argument("--output-dir", default=None)
     ap.add_argument("--rounds", type=int, default=None)
     ap.add_argument("--clients", type=int, default=None)
+    ap.add_argument("--base-seed", type=int, default=None, help="override base_seed (for seed sweeps)")
+    ap.add_argument("--port-base", type=int, default=None, help="override webshop_base_port (concurrent runs)")
+    ap.add_argument("--fedprox-mu", type=float, default=None, help=">0 enables the FedProx proximal term")
     args = ap.parse_args()
 
     cfg = load_cfg(args)

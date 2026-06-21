@@ -25,7 +25,7 @@ echo "VERL_CFG=$VERL_CFG"
 echo "CONFIG=$CONFIG"
 echo "host=$(hostname) ndev=$(python -c 'import torch;print(torch.cuda.device_count())')"
 
-python -m fedagent.fed.run_fed --config "$CONFIG"
+python -m fedagent.fed.run_fed --config "$CONFIG" "${@:2}"   # extra args (e.g. --base-seed 43 --output-dir ... --port-base 8086) forwarded
 
 echo "===== federated tree ====="
 OUT=$(python -c "from omegaconf import OmegaConf;print(OmegaConf.load('$CONFIG').get('output_dir','/tmp/xbb9020_fedagent_fed_webshop'))")
