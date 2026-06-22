@@ -18,7 +18,7 @@ than wrapping it, so first-party code lives in **two layers**:
 > Everything under `third_party/verl-agent/` that is **not** listed in Layer 2
 > below is unmodified upstream (Apache-2.0). The exhaustive list of FedAgent
 > additions and edits is in
-> [`third_party/verl-agent/CHANGES.md`](../third_party/verl-agent/CHANGES.md).
+> [`third_party/verl-agent/CHANGES.md`](../../third_party/verl-agent/CHANGES.md).
 
 ## Code tree (first-party)
 

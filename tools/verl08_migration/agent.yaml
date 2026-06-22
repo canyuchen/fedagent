@@ -1,2 +1,0 @@
-- name: gym_text
-  _target_: gym_text_agent_loop.GymTextAgentLoop

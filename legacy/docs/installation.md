@@ -104,6 +104,6 @@ bash reproduce.sh alfworld-main
 
 The underlying environment packages (and the other verl-agent benchmarks, Sokoban,
 Gym Cards, AppWorld) are documented in the vendored
-[`third_party/verl-agent/README.md`](../third_party/verl-agent/README.md).
+[`third_party/verl-agent/README.md`](../../third_party/verl-agent/README.md).
 
 > Weights & Biases logging is removed from this release; no W&B account or key is needed.

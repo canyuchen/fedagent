@@ -4,10 +4,10 @@
 > **Legacy (verl-agent-0.3.1) configs — do not run these with the verl-0.8 runner.** These
 > YAMLs use the original nested `federated:` / `verl:` / `data_preprocess:` schema consumed by
 > `tools/run_federated.py`, retained as the paper's experiment ground-truth. The **maintained**
-> configs are the verl-0.8 overlay's, under [`../fedagent/config/`](../fedagent/config/README.md),
+> configs are the verl-0.8 overlay's, under [`../fedagent/config/`](../../fedagent/config/README.md),
 > driven by `python -m fedagent.fed.run_fed` — the **same 176-config matrix, mirrored 1:1** in
 > structure + naming (only the file *contents* differ). See
-> [`../fedagent/docs/migration.md`](../fedagent/docs/migration.md).
+> [`../fedagent/docs/migration.md`](../../fedagent/docs/migration.md).
 
 Every experiment is a single YAML with three top-level blocks: `federated:`
 (federation / aggregation / partition), `verl:` (the verl-agent trainer, passed

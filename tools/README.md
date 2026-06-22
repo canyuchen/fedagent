@@ -1,18 +1,18 @@
-# Tools
+# `tools/`
 
-Operational entry points and helpers for federated runs, config generation,
-aggregation diagnostics, and heterogeneity data.
+Migration + operations tooling for the verl-0.8 FedAgent overlay.
 
-| Path | What it does |
-|---|---|
-| `run_federated.py` | CLI front-end (`--smart` / `--restart-resume` / direct) that resolves paths and launches the federated server. |
-| `resolve_paths.py` | Single source of truth for output-dir / run-name derivation from a config. |
-| `generate_uniform_configs.py` | Generate the curated config matrix. |
-| `verify_train_val_disjoint.py` | Sanity check that the train and val task splits do not overlap. |
-| `aggregation/` | Standalone aggregation verification / diagnostics (`check_aggregation.py`, `verify_aggregation.py`, `verl_fsdp_aggregation.py`, `create_fsdp_shards.py`, `fix_dtensor_loading.py`). |
-| `env_heterogeneity/` | Generate the env-level holdout / distractor sets (`gen_holdout_{webshop,alfworld}.py`). |
-| `heterogeneity_test/` | Task-level partition simulations + federated smoke tests (see its README). |
-| `monitor/` | Live run / checkpoint health monitor (`checkpoint_monitor.py`). |
+- [`verl08_migration/`](verl08_migration/) — the maintained toolbox:
+  - `aggregate_fedavg_fsdp.py` — the FSDP-sharded FedAvg aggregator invoked by
+    [`fedagent/fed/run_fed.py`](../fedagent/fed/run_fed.py) each round.
+  - `gen_paper_configs.py` — regenerates the 176-config paper matrix under
+    [`fedagent/config/paper/`](../fedagent/config/README.md).
+  - `gen_hardness_trajectories.py` — generates the `data/hardness/*.json` task-difficulty
+    labels the hardness heterogeneity arm requires.
+  - `summarize_fed_run.py` · `collect_fed_logs.sh` · `eval_alfworld_by_tasktype.py` —
+    log / metrics / eval helpers.
 
-See [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) for how these fit the
-control plane.
+The original verl-agent-0.3.1 tooling (`run_federated.py`, `resolve_paths.py`,
+`generate_uniform_configs.py`, and the `aggregation/`, `env_heterogeneity/`,
+`heterogeneity_test/`, `monitor/` toolboxes) has been archived to
+[`../legacy/tools/`](../legacy/tools/).

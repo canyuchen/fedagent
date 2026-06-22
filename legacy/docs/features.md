@@ -96,7 +96,7 @@ hidden from the policy (sensed only through successor states):
 mapping, and the *stable → degrade → collapse* spectrum are in
 [heterogeneity.md](heterogeneity.md); the strategy code lives in
 `third_party/verl-agent/agent_system/environments/partition_strategy.py`, with the
-bundled env-level data under [`data/env_heterogeneity/`](../data/env_heterogeneity).
+bundled env-level data under [`data/env_heterogeneity/`](../../data/env_heterogeneity).
 
 ## 5. Aggregation
 

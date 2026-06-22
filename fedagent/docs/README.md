@@ -10,8 +10,10 @@ overview in [`../README.md`](../README.md), then:
 | [installation.md](./installation.md) | The three conda envs (trainer + WebShop + ALFWorld services), data, and models. |
 | [running.md](./running.md) | Running `run_fed.py`: run modes, GPUs, baselines, FedProx, validation, worked examples. |
 | [configuration.md](./configuration.md) | The config-file decoder and the full federated-runner key reference. |
-| [heterogeneity.md](./heterogeneity.md) | The two-level (task vs environment) heterogeneity suite and how to select each arm. |
+| [features.md](./features.md) | Each capability → its config key → its source file (a navigation map). |
+| [heterogeneity.md](./heterogeneity.md) | The two-level (task vs environment) heterogeneity suite, with the construction math for each arm. |
 | [reproducing.md](./reproducing.md) | The paper's 176-config matrix mapped to run commands; 3-seed replication; baselines. |
+| [extending.md](./extending.md) | Extension points: a new dataset/env, heterogeneity strategy, RL algorithm, or aggregation rule. |
 | [migration.md](./migration.md) | What changed from the verl-agent-0.3.1 fork, the environment-engine reuse, and the fidelity record. |
 
 ## Per-component references
@@ -30,5 +32,6 @@ Each `fedagent/` subpackage has its own README with code-level detail:
 ## Scope
 
 These docs describe the **verl-0.8 overlay** (the live system, under `fedagent/`). The repo's
-top-level `docs/` and `README.md` describe the *original* verl-agent-0.3.1 artifact and are
-retained as historical reference; see [migration.md](./migration.md) for the relationship.
+top-level [`README.md`](../../README.md) is the landing page for this system; the *original*
+verl-agent-0.3.1 artifact is archived under [`legacy/`](../../legacy/README.md) as historical
+reference. See [migration.md](./migration.md) for the relationship.

@@ -47,3 +47,8 @@ config/_custom/
 
 # --- Internal planning doc (MUST NOT ship) -----------------------------------
 RELEASE_PLAN.md
+
+# --- Scratch / agent working dirs (local only; never ship) -------------------
+# GPU-verification scripts, smoke logs, and hand-run experiment traces.
+/_scratch/
+/.codex/

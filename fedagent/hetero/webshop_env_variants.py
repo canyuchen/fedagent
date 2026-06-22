@@ -58,10 +58,9 @@ import numpy as np
 # goals, reward, val env all UNCHANGED — only the search transition T(s'|s,a)
 # differs across clients.
 #
-# The 4 default variants are picked from probe data
-# (tools/env_heterogeneity/probe_bm25_real_queries.py) as the most-divergent
-# pairwise combination on real agent queries (mean Jaccard@10 ~ 0.65,
-# top-1 disagreement ~ 70%).
+# The 4 default variants were selected as the most-divergent pairwise
+# combination on real agent queries (mean Jaccard@10 ~ 0.65, top-1
+# disagreement ~ 70%) during the heterogeneity study.
 # ============================================================
 BM25_VARIANTS_DEFAULT = [
     {'name': 'full',           'fields': ['name', 'Title', 'description', 'features', 'BulletPoints'], 'k1': 1.2, 'b': 0.75},

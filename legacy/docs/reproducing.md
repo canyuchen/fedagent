@@ -308,7 +308,7 @@ the relevant benchmark, for 3 seeds each. The PPO appendix variant uses the
   (zero-shot Qwen2.5-1.5B-Instruct on the training pool) before drawing
   per-client success-rate quotas; `|X_i|` is held constant.
 - The partition is realized by `partition_dataset(strategy, ...)` in
-  [`third_party/verl-agent/agent_system/environments/partition_strategy.py`](../third_party/verl-agent/agent_system/environments/partition_strategy.py),
+  [`third_party/verl-agent/agent_system/environments/partition_strategy.py`](../../third_party/verl-agent/agent_system/environments/partition_strategy.py),
   selected via `federated.data_sharding.partition.strategy`.
 
 ---
@@ -549,7 +549,7 @@ To go beyond the released sweeps (full contract in
    it.
 2. **New heterogeneity construction**: add a strategy plus an `elif` branch in
    `partition_dataset()` in
-   [`partition_strategy.py`](../third_party/verl-agent/agent_system/environments/partition_strategy.py),
+   [`partition_strategy.py`](../../third_party/verl-agent/agent_system/environments/partition_strategy.py),
    then select it via `federated.data_sharding.partition.strategy`.
 3. **New RL algorithm**: implemented in the verl-agent trainer (PPO / GRPO /
    GiGPO / RLOO / DAPO are available upstream); set `verl.algorithm.adv_estimator`.
