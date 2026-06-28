@@ -67,6 +67,12 @@ DEFAULTS = {
     "weights": "",                          # "" => uniform FedAvg
     "wait_between_clients": 5,              # seconds; let Ray/GPU fully release
     "client_overrides": [],                 # extra `key=value` Hydra overrides per client (env-specific)
+    # rollout_mode: "windowed" (faithful per-turn = the paper, DEFAULT) | "concat" (stock full-history,
+    # 1 sample/episode, opt-in). windowed auto-injects WindowedAgentLoopManager into train+eval cmds;
+    # the env spec must pair it with agent_name=gym_text_windowed + config.history_length>=1 (concat
+    # uses gym_text + history_length=0). If client_overrides already sets a manager_class, that wins
+    # (back-compat with the explicit smoke configs).
+    "rollout_mode": "windowed",
     # --- env_kind=webshop: per-client remote env services + Catalog-Split heterogeneity ---
     "env_kind": "tinyguess",                # "tinyguess" (in-process) | "webshop" | "alfworld" (remote services)
     "webshop_run_service": str(PKG_DIR / "envs" / "webshop" / "service" / "run_service.sh"),
@@ -478,6 +484,20 @@ def summarize_val_dump(dump_dir: Path) -> Optional[dict]:
     return {"n": len(rows), "success_rate": mean("traj_success"), "reward_mean": mean("score")}
 
 
+WINDOWED_MANAGER_FQN = "fedagent.agent_loops.windowed_manager.WindowedAgentLoopManager"
+
+
+def inject_rollout_mode(cmd: List[str], cfg) -> None:
+    """Append the rollout-mode selector. rollout_mode=windowed (default) injects the
+    WindowedAgentLoopManager (faithful per-turn rollout = the paper); concat injects nothing
+    (stock 1-sample/episode). No-op if client_overrides already pins a manager_class (explicit
+    configs win — back-compat). Applied to BOTH train and eval cmds so eval uses the same rollout."""
+    if any("agent_loop_manager_class=" in str(o) for o in (cfg.client_overrides or [])):
+        return
+    if str(cfg.get("rollout_mode", "windowed")).lower() == "windowed":
+        cmd.append(f"+actor_rollout_ref.rollout.agent.agent_loop_manager_class={WINDOWED_MANAGER_FQN}")
+
+
 def eval_global(cfg, model_path: str, round_num: int, env_base: dict, val_url: str) -> Optional[dict]:
     """Score the GLOBAL model (base on round 0, else the round's aggregated HF) on the shared
     unperturbed val service via a verl val-only pass (no training, no critic, val temp from
@@ -505,6 +525,7 @@ def eval_global(cfg, model_path: str, round_num: int, env_base: dict, val_url: s
         f"trainer.experiment_name=round{round_num}_eval",
     ]
     cmd += [str(o) for o in (cfg.client_overrides or [])]   # reuse rollout shape (prompt/response/n/mem)
+    inject_rollout_mode(cmd, cfg)                            # windowed (default) -> WindowedAgentLoopManager
     env = dict(env_base)
     env.pop("FEDPROX_MU", None)                              # eval must never enable the proximal term
     if cfg.env_kind == "webshop":
@@ -587,6 +608,7 @@ def run_client(cfg, round_num: int, client_id: int, model_path: str,
     else:
         cmd.append("trainer.total_training_steps=null")
     cmd += [str(o) for o in (cfg.client_overrides or [])]   # env-specific Hydra overrides
+    inject_rollout_mode(cmd, cfg)                            # windowed (default) -> WindowedAgentLoopManager
     # PPO (gae): enable the critic and load it from critic_model_path. Appended AFTER
     # client_overrides so the per-round critic path wins; adv_estimator=gae alone flips
     # need_critic on (critic.enable defaults to null). GRPO leaves the cmd byte-identical

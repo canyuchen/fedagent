@@ -146,6 +146,32 @@ _pool: asyncio.Queue = None
 _sessions: dict = {}
 _base_env = None  # the shared AlfredTWEnv (game-file index); init_env() spawns pooled envs
 _num_games = 0
+
+
+class _Session:
+    """Per-episode server state: the borrowed env + idempotency bookkeeping for /step.
+
+    ``/step`` mutates env state, so a retried request (lost response, or a socket reset
+    mid-flight during the full-PPO storm) MUST apply the transition exactly once. The client
+    carries a monotone ``step_id`` and increments it only after a success, so it only ever
+    re-sends the CURRENT id -> a SINGLE-SLOT cache (last id + its response) is sufficient.
+    ``lock`` serializes concurrent same-session requests so the env steps once and the retry
+    returns the cached response. (This is the per-session async lock; it composes with the
+    process-global _TW_LOCK that serializes the actual textworld transition.)
+    """
+    __slots__ = ("env", "lock", "next_step_id", "last_step_id", "last_resp")
+
+    def __init__(self, env):
+        self.env = env
+        self.lock = asyncio.Lock()
+        self.next_step_id = 0
+        self.last_step_id = -1
+        self.last_resp = None
+
+    def reset_steps(self):
+        self.next_step_id = 0
+        self.last_step_id = -1
+        self.last_resp = None
 # textworld's PDDL grammar parser (tatsu) is a SHARED module-level singleton with mutable
 # rule-stack state -> concurrent reset()/step() across the pooled envs corrupts it
 # (IndexError: pop from empty list). Serialize all textworld env ops with one process-global
@@ -245,6 +271,7 @@ class ResetReq(BaseModel):
 class StepReq(BaseModel):
     session_id: str
     text: str
+    step_id: int = -1   # idempotency key; -1 = legacy caller (no replay cache)
 
 
 @app.get("/health")
@@ -269,15 +296,16 @@ async def create(r: Sid):
         return {"ok": True}    # idempotent: a retried /create (lost response) must NOT borrow a
                                # 2nd env -- that would orphan the 1st and slowly drain the pool.
     env = await _pool.get()  # borrow (waits if the pool is exhausted)
-    _sessions[r.session_id] = env
+    _sessions[r.session_id] = _Session(env)
     return {"ok": True}
 
 
 @app.post("/reset")
 async def reset(r: ResetReq):
-    env = _sessions.get(r.session_id)
-    if env is None:
+    sess = _sessions.get(r.session_id)
+    if sess is None:
         raise HTTPException(404, "unknown session")
+    env = sess.env
 
     def _do():
         # textworld reset() takes no game arg; seed(seed) deterministically reshuffles
@@ -291,43 +319,62 @@ async def reset(r: ResetReq):
         return obs[0], _admissible(info), info.get("extra.gamefile")
 
     obs, avail, gamefile = await asyncio.to_thread(_do)
+    sess.reset_steps()   # new episode -> restart the /step idempotency counter
     return {"obs": obs, "admissible_commands": avail, "gamefile": gamefile}
 
 
 @app.post("/step")
 async def step(r: StepReq):
-    env = _sessions.get(r.session_id)
-    if env is None:
+    sess = _sessions.get(r.session_id)
+    if sess is None:
         raise HTTPException(404, "unknown session")
 
-    def _do():
-        # alfworld_projection mutates the actions list; pass a fresh single-element list.
-        # action_pools (admissible cmds) only drive the think/Chinese-char validity check.
-        acts, valids = alfworld_projection([r.text], [[]])
-        # step() executes PDDL actions on the loaded game (shared tatsu parser state) ->
-        # serialize with the same global lock as reset() (see _TW_LOCK).
-        with _TW_LOCK:
-            obs, scores, dones, infos = env.step([acts[0]])
-        info = _unbatch_info(infos)
-        won = bool(info.get("won", False))
-        # text-only reward == compute_reward(info) == 10.0 * won (see envs.compute_reward)
-        reward = 10.0 * float(won)
-        return obs[0], reward, bool(dones[0]), _admissible(info), won, int(valids[0])
+    # Serialize same-session requests so a retry that races the original applies the env
+    # transition exactly once (see _Session). Different sessions hold different locks; the
+    # actual textworld transition is additionally serialized process-wide by _TW_LOCK.
+    async with sess.lock:
+        if r.step_id >= 0:
+            if r.step_id == sess.last_step_id:
+                return sess.last_resp    # replay: env already stepped -> return cached response
+            if r.step_id != sess.next_step_id:
+                raise HTTPException(409, f"step_id {r.step_id} out of order (expected "
+                                         f"{sess.next_step_id} or replay {sess.last_step_id})")
+        env = sess.env
 
-    obs, reward, done, avail, won, valid = await asyncio.to_thread(_do)
-    return {
-        "obs": obs,
-        "reward": reward,
-        "done": done,
-        "admissible_commands": avail,
-        "success": won,
-        "is_action_valid": valid,
-    }
+        def _do():
+            # alfworld_projection mutates the actions list; pass a fresh single-element list.
+            # action_pools (admissible cmds) only drive the think/Chinese-char validity check.
+            acts, valids = alfworld_projection([r.text], [[]])
+            # step() executes PDDL actions on the loaded game (shared tatsu parser state) ->
+            # serialize with the same global lock as reset() (see _TW_LOCK).
+            with _TW_LOCK:
+                obs, scores, dones, infos = env.step([acts[0]])
+            info = _unbatch_info(infos)
+            won = bool(info.get("won", False))
+            # text-only reward == compute_reward(info) == 10.0 * won (see envs.compute_reward)
+            reward = 10.0 * float(won)
+            return obs[0], reward, bool(dones[0]), _admissible(info), won, int(valids[0]), acts[0]
+
+        obs, reward, done, avail, won, valid, action = await asyncio.to_thread(_do)
+        resp = {
+            "obs": obs,
+            "reward": reward,
+            "done": done,
+            "admissible_commands": avail,
+            "success": won,
+            "is_action_valid": valid,
+            "action": action,        # PROJECTED action (for windowed-mode history; matches legacy)
+        }
+        if r.step_id >= 0:           # commit single-slot replay cache (only the latest id is retried)
+            sess.last_step_id = r.step_id
+            sess.last_resp = resp
+            sess.next_step_id = r.step_id + 1
+        return resp
 
 
 @app.post("/close")
 async def close(r: Sid):
-    env = _sessions.pop(r.session_id, None)
-    if env is not None:
-        _pool.put_nowait(env)  # return to the pool for the next episode
+    sess = _sessions.pop(r.session_id, None)
+    if sess is not None:
+        _pool.put_nowait(sess.env)  # return to the pool for the next episode
     return {"ok": True}

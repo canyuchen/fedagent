@@ -167,6 +167,32 @@ _pool: asyncio.Queue = None
 _sessions: dict = {}
 
 
+class _Session:
+    """Per-episode server state: the borrowed env + idempotency bookkeeping for /step.
+
+    ``/step`` mutates env state, so a retried request (the client lost the response, or the
+    socket reset mid-flight during the full-PPO storm) MUST apply the transition exactly once.
+    The client carries a monotone ``step_id`` and increments it only after a success, so it
+    only ever re-sends the CURRENT id -> a SINGLE-SLOT cache (last id + its response) is
+    sufficient; we never need to replay an older step. ``lock`` serializes concurrent
+    same-session requests (the client may re-send while the original is still computing
+    server-side) so the env steps once and the retry returns the cached response.
+    """
+    __slots__ = ("env", "lock", "next_step_id", "last_step_id", "last_resp")
+
+    def __init__(self, env):
+        self.env = env
+        self.lock = asyncio.Lock()
+        self.next_step_id = 0
+        self.last_step_id = -1
+        self.last_resp = None
+
+    def reset_steps(self):
+        self.next_step_id = 0
+        self.last_step_id = -1
+        self.last_resp = None
+
+
 def _make_env(seed: int):
     import gym
     from web_agent_site.envs import WebAgentTextEnv  # noqa: F401  (registers the gym id)
@@ -269,6 +295,7 @@ class ResetReq(BaseModel):
 class StepReq(BaseModel):
     session_id: str
     text: str
+    step_id: int = -1   # idempotency key; -1 = legacy caller (no replay cache)
 
 
 @app.get("/health")
@@ -292,15 +319,16 @@ async def create(r: Sid):
         return {"ok": True}    # idempotent: a retried /create (lost response) must NOT borrow a
                                # 2nd env -- that would orphan the 1st and slowly drain the pool.
     env = await _pool.get()  # borrow (waits if the pool is exhausted)
-    _sessions[r.session_id] = env
+    _sessions[r.session_id] = _Session(env)
     return {"ok": True}
 
 
 @app.post("/reset")
 async def reset(r: ResetReq):
-    env = _sessions.get(r.session_id)
-    if env is None:
+    sess = _sessions.get(r.session_id)
+    if sess is None:
         raise HTTPException(404, "unknown session")
+    env = sess.env
 
     def _do():
         if WEBSHOP_SPLIT == "val":
@@ -323,44 +351,63 @@ async def reset(r: ResetReq):
         return obs, _avail(env), gid
 
     obs, avail, gid = await asyncio.to_thread(_do)
+    sess.reset_steps()   # new episode -> restart the /step idempotency counter
     return {"obs": obs, "available_actions": avail, "goal_id": gid}
 
 
 @app.post("/step")
 async def step(r: StepReq):
-    env = _sessions.get(r.session_id)
-    if env is None:
+    sess = _sessions.get(r.session_id)
+    if sess is None:
         raise HTTPException(404, "unknown session")
 
-    def _do():
-        acts, valids = webshop_projection([r.text])  # parse <action>..</action> server-side
-        obs, reward, done, info = env.step(acts[0])
-        info = info or {}
-        # SPARSE training reward, exactly like verl-agent envs.py:32-40: the env's graded
-        # score in [0,1] is kept as task_score (info), but the TRAINING reward is binary
-        # {0,10} -- 10 iff the episode ends with a perfect match (done and score==1.0). The
-        # overlay previously returned the dense score, which changes the GRPO/PPO objective
-        # on every WebShop arm (partial-match trajectories get nonzero group-relative adv).
-        dense = float(reward)
-        won = bool(done and dense == 1.0)
-        sparse = 10.0 if won else 0.0
-        return obs, sparse, dense, bool(done), _avail(env), won, int(valids[0])
+    # Serialize same-session requests so a retry that races the original applies the env
+    # transition exactly once (see _Session). Different sessions hold different locks and
+    # still step concurrently.
+    async with sess.lock:
+        if r.step_id >= 0:
+            if r.step_id == sess.last_step_id:
+                return sess.last_resp    # replay: env already stepped -> return cached response
+            if r.step_id != sess.next_step_id:
+                raise HTTPException(409, f"step_id {r.step_id} out of order (expected "
+                                         f"{sess.next_step_id} or replay {sess.last_step_id})")
+        env = sess.env
 
-    obs, sparse, dense, done, avail, won, valid = await asyncio.to_thread(_do)
-    return {
-        "obs": obs,
-        "reward": sparse,        # sparse {0,10} for training (matches original)
-        "task_score": dense,     # dense graded score in [0,1] (diagnostic only)
-        "done": done,
-        "available_actions": avail,
-        "success": won,
-        "is_action_valid": valid,
-    }
+        def _do():
+            acts, valids = webshop_projection([r.text])  # parse <action>..</action> server-side
+            obs, reward, done, info = env.step(acts[0])
+            info = info or {}
+            # SPARSE training reward, exactly like verl-agent envs.py:32-40: the env's graded
+            # score in [0,1] is kept as task_score (info), but the TRAINING reward is binary
+            # {0,10} -- 10 iff the episode ends with a perfect match (done and score==1.0). The
+            # overlay previously returned the dense score, which changes the GRPO/PPO objective
+            # on every WebShop arm (partial-match trajectories get nonzero group-relative adv).
+            dense = float(reward)
+            won = bool(done and dense == 1.0)
+            sparse = 10.0 if won else 0.0
+            return obs, sparse, dense, bool(done), _avail(env), won, int(valids[0]), acts[0]
+
+        obs, sparse, dense, done, avail, won, valid, action = await asyncio.to_thread(_do)
+        resp = {
+            "obs": obs,
+            "reward": sparse,        # sparse {0,10} for training (matches original)
+            "task_score": dense,     # dense graded score in [0,1] (diagnostic only)
+            "done": done,
+            "available_actions": avail,
+            "success": won,
+            "is_action_valid": valid,
+            "action": action,        # PROJECTED action (for windowed-mode history; matches legacy)
+        }
+        if r.step_id >= 0:           # commit single-slot replay cache (only the latest id is retried)
+            sess.last_step_id = r.step_id
+            sess.last_resp = resp
+            sess.next_step_id = r.step_id + 1
+        return resp
 
 
 @app.post("/close")
 async def close(r: Sid):
-    env = _sessions.pop(r.session_id, None)
-    if env is not None:
-        _pool.put_nowait(env)  # return to the pool for the next episode
+    sess = _sessions.pop(r.session_id, None)
+    if sess is not None:
+        _pool.put_nowait(sess.env)  # return to the pool for the next episode
     return {"ok": True}

@@ -48,6 +48,14 @@ These were verified during migration audits and fixed where they diverged (see
   `actor_rollout_ref.rollout.n=8`). Stock verl 0.8 multiplies `ppo_mini_batch_size` by
   `rollout.n` internally, so the original's "1 update / rollout-batch" is reproduced with
   `ppo_mini_batch_size=8` prompts (GRPO) / 64 (PPO) — **not** 64×8.
+- **Trajectories/step = `train_batch_size × rollout.n`, for PPO as well as GRPO.** Confirmed
+  in the verl-agent source (`agent_system/multi_turn_rollout/rollout_loop.py:448` targets
+  `train_batch_size * rollout.n`; `:504` does `gen_batch.repeat(rollout.n)`), both
+  **unconditional** — *not* gated on `adv_estimator`, and PPO uses the same `multi_turn_loop`.
+  So the original ran **GRPO 8×8 = 64** and **PPO 64×8 = 512** trajectories/step; the new
+  configs reproduce both exactly. ⚠️ **`rollout.n` must stay 8 for PPO** — dropping it to 1
+  would give 64/step, *unfaithful* to the paper. (Reviewed false-alarm: the new PPO is **not**
+  doing 8× extra rollout vs legacy — legacy already did 512/step.)
 - **Sparse reward + invalid-action penalty** — `{0,10}` with a `0.1 × n_invalid` penalty
   (the penalty moved from the trainer actor to the agent-loop; same total per episode).
 - **Task-heterogeneity partitions the real shuffled `server.goals` at runtime** (not an

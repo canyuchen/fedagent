@@ -24,6 +24,13 @@ from uuid import uuid4
 import httpx
 
 from fedagent.envs.base import BaseTextEnv, Obs
+from fedagent.envs.legacy_prompts import build_alfworld_obs
+
+
+def _extract_alf_task(obs: str) -> str:
+    # legacy env_manager.extract_task: substring after "Your task is to: " in the init obs
+    i = (obs or "").find("Your task is to: ")
+    return obs[i + len("Your task is to: "):].strip() if i != -1 else ""
 
 # Format/reasoning instructions (env-level, no per-episode task) -> system message.
 # This is the instruction tail of verl-agent's ALFWORLD_TEMPLATE_NO_HIS, lifted to the
@@ -62,6 +69,13 @@ class AlfworldEnv(BaseTextEnv):
         ).rstrip("/")
         self.timeout = float(self.env_config.get("timeout", 120.0))
         self.session_id = uuid4().hex
+        self._step_id = 0      # idempotency key for /step (incremented only after a success)
+        # WINDOWED (faithful) mode: history_length>0 reproduces the paper's per-turn prompt
+        # (task + last-N (obs, action) pairs + current obs). 0 (default) = concat mode.
+        self._history_length = int(self.env_config.get("history_length", 0))
+        self._memory: list = []     # [{"text_obs": <raw obs before action>, "action": <projected action>}]
+        self._pre_obs = ""          # raw obs that led to the pending action (legacy pre_text_obs)
+        self._task = ""             # extracted from the init obs ("Your task is to: ...")
         self._client: Optional[httpx.AsyncClient] = None
 
     def _c(self) -> httpx.AsyncClient:
@@ -73,14 +87,17 @@ class AlfworldEnv(BaseTextEnv):
                     block: bool = False, retries: int = 8, base: float = 0.3):
         """POST to the env service; raise on HTTP errors, and (only when ``retry``) retry transport errors.
 
-        ``retry=True`` is used ONLY for the idempotent endpoints (/create, /reset): at the full PPO
+        ``retry=True`` is used for ALL stateful endpoints (/create, /reset, /step): at the full PPO
         batch the rollout fires train_batch_size x rollout.n episodes at once, so they hit this
         client's pooled per-client service near-simultaneously and the HTTP boundary is overwhelmed
         (sockets reset mid-response -> httpx.ReadError). Bounded backoff + jitter spreads the retried
-        requests across the pool. /step is NOT retried: it mutates env state, so replaying it after the
-        server already applied the action would corrupt the trajectory -- it fails fast instead.
-        raise_for_status() ensures a 4xx/5xx body (e.g. {"detail":"unknown session"}) is never
-        silently parsed as an empty observation. (GRPO's smaller batch never trips the storm.)
+        requests across the pool. /step mutates env state, so a naive replay would corrupt the
+        trajectory -- it is made retry-SAFE by an idempotency key (``step_id``): the server applies
+        each id exactly once and replays the cached response for a re-sent id (see service/server.py).
+        We therefore increment ``self._step_id`` only AFTER a success, so the in-flight id is the only
+        one ever re-sent. raise_for_status() ensures a 4xx/5xx body (e.g. {"detail":"unknown session"}
+        or a 409 step-ordering error) is never silently parsed as an empty observation, and -- being an
+        HTTPStatusError, not a TransportError -- is NOT retried (a real desync surfaces loudly).
 
         ``block=True`` (used for /create) disables the per-request read timeout: borrowing a pooled
         env legitimately blocks until one frees, and that wait scales with batch/pool, NOT with the
@@ -110,18 +127,42 @@ class AlfworldEnv(BaseTextEnv):
     async def reset(self, seed: int = 0) -> Tuple[Obs, Dict[str, Any]]:
         await self._post("/create", {"session_id": self.session_id}, retry=True, block=True)
         r = await self._post("/reset", {"session_id": self.session_id, "seed": int(seed)}, retry=True)
+        self._step_id = 0   # fresh episode -> restart the /step idempotency counter (server does too)
         d = r.json()
-        obs_str = _OBS.format(
-            obs=d.get("obs", "") or "", actions=_fmt_actions(d.get("admissible_commands", []))
-        )
+        raw = d.get("obs", "") or ""
+        avail_str = _fmt_actions(d.get("admissible_commands", []))
+        if self._history_length > 0:        # WINDOWED (faithful) mode: full legacy template
+            self._task = _extract_alf_task(raw)
+            self._memory = []
+            self._pre_obs = raw
+            obs_str = build_alfworld_obs(task=self._task, memory=self._memory, current_obs=raw,
+                                         admissible_str=avail_str, history_length=self._history_length,
+                                         init=True)
+        else:                               # concat mode (unchanged)
+            obs_str = _OBS.format(obs=raw, actions=avail_str)
         return {"obs_str": obs_str}, {}
 
     async def step(self, action_str: str) -> Tuple[Obs, float, bool, Dict[str, Any]]:
-        r = await self._post("/step", {"session_id": self.session_id, "text": action_str})
-        d = r.json()
-        obs_str = _OBS.format(
-            obs=d.get("obs", "") or "", actions=_fmt_actions(d.get("admissible_commands", []))
+        # retry=True is SAFE here: step_id makes the server apply/replay exactly once. Increment
+        # only after the await returns (success) so a retried request always carries this same id.
+        r = await self._post(
+            "/step",
+            {"session_id": self.session_id, "text": action_str, "step_id": self._step_id},
+            retry=True,
         )
+        self._step_id += 1
+        d = r.json()
+        raw = d.get("obs", "") or ""
+        avail_str = _fmt_actions(d.get("admissible_commands", []))
+        if self._history_length > 0:        # WINDOWED (faithful) mode
+            # store (raw obs that led to this action, PROJECTED action) -- matches legacy memory
+            self._memory.append({"text_obs": self._pre_obs, "action": d.get("action", action_str)})
+            self._pre_obs = raw
+            obs_str = build_alfworld_obs(task=self._task, memory=self._memory, current_obs=raw,
+                                         admissible_str=avail_str, history_length=self._history_length,
+                                         init=False)
+        else:                               # concat mode (unchanged)
+            obs_str = _OBS.format(obs=raw, actions=avail_str)
         info = {
             "success": bool(d.get("success", False)),
             "is_action_valid": bool(d.get("is_action_valid", True)),

@@ -21,6 +21,7 @@ from uuid import uuid4
 import httpx
 
 from fedagent.envs.base import BaseTextEnv, Obs
+from fedagent.envs.legacy_prompts import build_webshop_obs
 
 # Format instructions (env-level, no per-episode task) -> system message.
 WEBSHOP_SYSTEM = (
@@ -74,6 +75,13 @@ class WebShopEnv(BaseTextEnv):
         self.session_id = uuid4().hex
         self._task = ""
         self._goal_id = None   # asin of the current goal (only when the service logs it)
+        self._step_id = 0      # idempotency key for /step (incremented only after a success)
+        # WINDOWED (faithful) mode: history_length>0 reproduces the paper's per-turn prompt
+        # (task + last-N (obs, action) pairs + current obs). 0 (default) = concat mode (per-turn
+        # body only; the GymTextAgentLoop supplies history as the growing chat).
+        self._history_length = int(self.env_config.get("history_length", 0))
+        self._memory: list = []     # [{"text_obs": <raw obs before action>, "action": <projected action>}]
+        self._pre_obs = ""          # raw obs that led to the pending action (legacy pre_text_obs)
         self._client: Optional[httpx.AsyncClient] = None
 
     def _c(self) -> httpx.AsyncClient:
@@ -85,14 +93,17 @@ class WebShopEnv(BaseTextEnv):
                     block: bool = False, retries: int = 8, base: float = 0.3):
         """POST to the env service; raise on HTTP errors, and (only when ``retry``) retry transport errors.
 
-        ``retry=True`` is used ONLY for the idempotent endpoints (/create, /reset): at the full PPO
+        ``retry=True`` is used for ALL stateful endpoints (/create, /reset, /step): at the full PPO
         batch the rollout fires train_batch_size x rollout.n episodes at once, so they hit this
         client's pooled per-client service near-simultaneously and the HTTP boundary is overwhelmed
         (sockets reset mid-response -> httpx.ReadError). Bounded backoff + jitter spreads the retried
-        requests across the pool. /step is NOT retried: it mutates env state, so replaying it after the
-        server already applied the action would corrupt the trajectory -- it fails fast instead.
-        raise_for_status() ensures a 4xx/5xx body (e.g. {"detail":"unknown session"}) is never
-        silently parsed as an empty observation. (GRPO's smaller batch never trips the storm.)
+        requests across the pool. /step mutates env state, so a naive replay would corrupt the
+        trajectory -- it is made retry-SAFE by an idempotency key (``step_id``): the server applies
+        each id exactly once and replays the cached response for a re-sent id (see service/server.py).
+        We therefore increment ``self._step_id`` only AFTER a success, so the in-flight id is the only
+        one ever re-sent. raise_for_status() ensures a 4xx/5xx body (e.g. {"detail":"unknown session"}
+        or a 409 step-ordering error) is never silently parsed as an empty observation, and -- being an
+        HTTPStatusError, not a TransportError -- is NOT retried (a real desync surfaces loudly).
 
         ``block=True`` (used for /create) disables the per-request read timeout: borrowing a pooled
         env legitimately blocks until one frees, and that wait scales with batch/pool, NOT with the
@@ -122,21 +133,45 @@ class WebShopEnv(BaseTextEnv):
     async def reset(self, seed: int = 0) -> Tuple[Obs, Dict[str, Any]]:
         await self._post("/create", {"session_id": self.session_id}, retry=True, block=True)
         r = await self._post("/reset", {"session_id": self.session_id, "seed": int(seed)}, retry=True)
+        self._step_id = 0   # fresh episode -> restart the /step idempotency counter (server does too)
         d = r.json()
         raw = d.get("obs", "") or ""
         self._task = _extract_task(raw)
         self._goal_id = d.get("goal_id")   # asin (hardness-labelling pass only); None normally
-        obs_str = _FIRST_OBS.format(
-            task=self._task, obs=raw, actions=_fmt_actions(d.get("available_actions", {}))
-        )
+        avail_str = _fmt_actions(d.get("available_actions", {}))
+        if self._history_length > 0:        # WINDOWED (faithful) mode: full legacy template
+            self._memory = []
+            self._pre_obs = raw
+            obs_str = build_webshop_obs(task=self._task, memory=self._memory, current_obs=raw,
+                                        available_str=avail_str, history_length=self._history_length,
+                                        init=True)
+        else:                               # concat mode (unchanged): per-turn body only
+            obs_str = _FIRST_OBS.format(task=self._task, obs=raw, actions=avail_str)
         return {"obs_str": obs_str}, {}
 
     async def step(self, action_str: str) -> Tuple[Obs, float, bool, Dict[str, Any]]:
-        r = await self._post("/step", {"session_id": self.session_id, "text": action_str})
-        d = r.json()
-        obs_str = _STEP_OBS.format(
-            obs=d.get("obs", "") or "", actions=_fmt_actions(d.get("available_actions", {}))
+        # retry=True is SAFE here: step_id makes the server apply/replay exactly once. Increment
+        # only after the await returns (success) so a retried request always carries this same id.
+        r = await self._post(
+            "/step",
+            {"session_id": self.session_id, "text": action_str, "step_id": self._step_id},
+            retry=True,
         )
+        self._step_id += 1
+        d = r.json()
+        raw = d.get("obs", "") or ""
+        avail_str = _fmt_actions(d.get("available_actions", {}))
+        if self._history_length > 0:        # WINDOWED (faithful) mode
+            # store (raw obs that led to this action, the PROJECTED action) — matches legacy
+            # memory.store({text_obs: pre_text_obs, action: projection_f(text)}). The service
+            # parses the action server-side and returns it as "action" (fallback: raw text).
+            self._memory.append({"text_obs": self._pre_obs, "action": d.get("action", action_str)})
+            self._pre_obs = raw
+            obs_str = build_webshop_obs(task=self._task, memory=self._memory, current_obs=raw,
+                                        available_str=avail_str, history_length=self._history_length,
+                                        init=False)
+        else:                               # concat mode (unchanged)
+            obs_str = _STEP_OBS.format(obs=raw, actions=avail_str)
         info = {
             "success": bool(d.get("success", False)),
             "is_action_valid": bool(d.get("is_action_valid", True)),
