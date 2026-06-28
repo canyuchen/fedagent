@@ -37,19 +37,19 @@ size_std: 1
 client_overrides:
   - data.train_batch_size=64
   - data.max_prompt_length=2048
-  - data.max_response_length=8192
+  - data.max_response_length=512
   - actor_rollout_ref.actor.ppo_mini_batch_size=64
   - actor_rollout_ref.rollout.n=8
   - actor_rollout_ref.rollout.prompt_length=2048
-  - actor_rollout_ref.rollout.response_length=8192
-  - actor_rollout_ref.rollout.max_model_len=16384
+  - actor_rollout_ref.rollout.response_length=512
+  - actor_rollout_ref.rollout.max_model_len=2560
   - actor_rollout_ref.rollout.gpu_memory_utilization=0.5
+  - actor_rollout_ref.actor.checkpoint.save_contents=[model]
   - actor_rollout_ref.actor.optim.lr=1e-6
   - actor_rollout_ref.actor.use_kl_loss=true
   - actor_rollout_ref.actor.kl_loss_coef=0.01
   - actor_rollout_ref.actor.kl_loss_type=low_var_kl
   - actor_rollout_ref.actor.fsdp_config.optimizer_offload=true
-  - actor_rollout_ref.actor.checkpoint.save_contents=[model]
   - critic.optim.lr=1e-5
   - critic.model.use_remove_padding=true
   - critic.model.enable_gradient_checkpointing=true

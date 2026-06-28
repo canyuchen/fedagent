@@ -35,11 +35,12 @@ size_std: 256
 
 client_overrides:
   - data.train_batch_size=8
-  - data.max_prompt_length=2048
-  - data.max_response_length=6144
+  - data.max_prompt_length=4096
+  - data.max_response_length=512
   - actor_rollout_ref.actor.ppo_mini_batch_size=8
   - actor_rollout_ref.rollout.n=8
-  - actor_rollout_ref.rollout.prompt_length=2048
-  - actor_rollout_ref.rollout.response_length=6144
-  - actor_rollout_ref.rollout.max_model_len=8192
+  - actor_rollout_ref.rollout.prompt_length=4096
+  - actor_rollout_ref.rollout.response_length=512
+  - actor_rollout_ref.rollout.max_model_len=4608
   - actor_rollout_ref.rollout.gpu_memory_utilization=0.6
+  - actor_rollout_ref.actor.checkpoint.save_contents=[model]

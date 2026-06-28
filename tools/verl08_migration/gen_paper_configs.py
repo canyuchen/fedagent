@@ -138,31 +138,31 @@ def fed_filename(env, algo, total, m, t, e, min_goals, p_suffix):
 
 
 def client_overrides(is_ppo, group_size, env_kind):
-    """Rollout/optim Hydra overrides. WebShop uses response 6144 for BOTH GRPO and PPO
-    (symmetric -- an asymmetric/shorter PPO budget hard-truncates the trajectory and biases the
-    GRPO-vs-PPO comparison; PPO@6144 GPU-VERIFIED to fit 1.5B/4-GPU at 53GB reserved), max_model_len
-    8192, 15-turn episodes. ALFWorld widens the context window for 50-turn transcripts
-    (GPU-VERIFY) but keeps the same batch/group/critic recipe."""
+    """Rollout/optim Hydra overrides for the WINDOWED (faithful per-turn, history_length=2) rollout
+    = the paper. Each turn is ONE training sample, so the response is a single action (512 == legacy
+    examples/ppo_trainer/run_{alfworld,webshop}.sh) and the prompt is the BOUNDED windowed template
+    (task + last-2 (obs,action) + current obs), NOT a growing transcript -- so the old 6144/8192
+    response budgets + 8192/16384 max_model_len are gone. ALFWorld prompt 2048 (short room text);
+    WebShop prompt 4096 (long product pages, == legacy). max_model_len = prompt + response."""
     if env_kind == "alfworld":
-        resp = 8192               # 50-turn budget; GPU-VERIFY (raise to 12288/16384 if truncated)
-        max_model_len = 16384     # holds the running 50-turn chat transcript; GPU-VERIFY for OOM
+        prompt, resp, max_model_len = 2048, 512, 2560
         gpu_mem = "0.5" if is_ppo else "0.6"
     else:
-        resp = 6144               # GRPO and PPO symmetric (F6: PPO@6144 verified to fit 1.5B/4-GPU, 53GB reserved)
-        max_model_len = 8192
+        prompt, resp, max_model_len = 4096, 512, 4608   # WebShop pages are long (== legacy 4096)
         gpu_mem = "0.5" if is_ppo else "0.6"
     batch = 64 if is_ppo else 8
     mini = 64 if is_ppo else 8
     ov = [
         f"data.train_batch_size={batch}",
-        "data.max_prompt_length=2048",
+        f"data.max_prompt_length={prompt}",
         f"data.max_response_length={resp}",
         f"actor_rollout_ref.actor.ppo_mini_batch_size={mini}",   # PROMPTS; verl-0.8 x rollout.n => full batch = 1 update (== FedAgent)
         f"actor_rollout_ref.rollout.n={group_size}",             # FedAgent group size G (env.rollout.n=8)
-        "actor_rollout_ref.rollout.prompt_length=2048",
+        f"actor_rollout_ref.rollout.prompt_length={prompt}",
         f"actor_rollout_ref.rollout.response_length={resp}",
         f"actor_rollout_ref.rollout.max_model_len={max_model_len}",
         f"actor_rollout_ref.rollout.gpu_memory_utilization={gpu_mem}",
+        "actor_rollout_ref.actor.checkpoint.save_contents=[model]",  # GRPO+PPO actor model-only (== legacy; no optim/extra I/O)
     ]
     if is_ppo:
         ov += [
@@ -171,7 +171,6 @@ def client_overrides(is_ppo, group_size, env_kind):
             "actor_rollout_ref.actor.kl_loss_coef=0.01",
             "actor_rollout_ref.actor.kl_loss_type=low_var_kl",
             "actor_rollout_ref.actor.fsdp_config.optimizer_offload=true",
-            "actor_rollout_ref.actor.checkpoint.save_contents=[model]",
             "critic.optim.lr=1e-5",
             "critic.model.use_remove_padding=true",
             "critic.model.enable_gradient_checkpointing=true",

@@ -35,10 +35,11 @@ omega: 0.99
 client_overrides:
   - data.train_batch_size=8
   - data.max_prompt_length=2048
-  - data.max_response_length=8192
+  - data.max_response_length=512
   - actor_rollout_ref.actor.ppo_mini_batch_size=8
   - actor_rollout_ref.rollout.n=8
   - actor_rollout_ref.rollout.prompt_length=2048
-  - actor_rollout_ref.rollout.response_length=8192
-  - actor_rollout_ref.rollout.max_model_len=16384
+  - actor_rollout_ref.rollout.response_length=512
+  - actor_rollout_ref.rollout.max_model_len=2560
   - actor_rollout_ref.rollout.gpu_memory_utilization=0.6
+  - actor_rollout_ref.actor.checkpoint.save_contents=[model]
