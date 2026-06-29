@@ -405,3 +405,28 @@ bash fedagent/scripts/run_webshop_fed_smoke.sh CFG         # federated WebShop (
 # extra args forwarded to run_fed, e.g.:  ... CFG --base-seed 43 --output-dir /tmp/run_s43 --port-base 8090
 python tools/verl08_migration/summarize_fed_run.py A=/tmp/...scaled_env B=/tmp/...scaled_task C=/tmp/...scaled_homog
 ```
+
+## Acceleration + concurrency-fix round (2026-06-29)
+
+Full analysis in [`docs/acceleration.md`](docs/acceleration.md) / [`_results`](docs/acceleration_results.md) /
+[`_report`](docs/acceleration_report.md). Configs/drivers preserved under
+`tools/verl08_migration/{accel,poc}/` (moved out of the gitignored 1.3 TB `_scratch/`).
+
+**GPU-validated timings (1.5B, 15-turn WebShop, paper settings, 4×H100):**
+- **Client-parallel #3** (2 client × 2 GPU concurrent) = **727s/round** vs 4-GPU solo 558s, 2-GPU solo
+  725s — sub-linear FSDP scaling makes 2×2 a ~35% win on small models (`accel/run_p3.sh`).
+- **Eval modes** (inline / parallel / shared / worker) swept; `eval_mode=worker` (hot-engine eval, no
+  cold-start) is the cheap-eval path (`accel/run_evalmode.sh`, `run_paper_modes*.sh`).
+- **"2 train on 1 GPU + 2 GPU eval" layout** (`accel/run_complete.sh`): t1(1)=**995s/round**, eval 407s
+  **fully hidden** on the spare cards — correctness-OK but **NOT** the fast path. #3 + worker eval =
+  **845s** beats it (`accel/run_worker3.sh`): 1-GPU train is only 1.37× slower than 2-GPU (rollout is
+  env-latency-bound), so hiding eval (−407s) doesn't offset the 1-GPU penalty (+268s/round).
+  **Recommended single-node fast path: #3 (2 GPU/client) + `eval_mode=worker`.**
+
+**Concurrency bug found + fixed (the headline).** ≥3 concurrent verl jobs on one node (client-parallel
++ eval∥train) **deadlocked** at the FSDP→vLLM weight sync: verl namespaces its weight-transfer ZMQ
+`/tmp` socket by Ray job id, but FedAgent's isolated per-client Ray clusters all assign the same first
+id `01000000` → identical `/tmp` socket → 44-min hang at 0% util in `update_weights`. Fixed: `run_fed`
+exports a unique `VERL_RAY_JOB_ID` per verl subprocess + a 2-line verl honor-override patch
+(`tools/verl08_migration/patches/`); GPU-validated rc=0 on the exact 3-job layout. Same family as the
+earlier FedAvg-29500 rendezvous fix. Commits `f4cb8ca` / `aa145f5`.
