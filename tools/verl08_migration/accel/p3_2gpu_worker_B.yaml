@@ -1,7 +1,7 @@
 # #3 + worker-eval, client B (GPU 2,3; disjoint ports from A). See p3_2gpu_worker_A.yaml for intent.
 env_kind: webshop
 env_spec: config/envs/webshop_15.yaml
-val_env_spec: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/_scratch/accel/webshop_val_64.yaml
+val_env_spec: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/tools/verl08_migration/accel/webshop_val_64.yaml
 output_dir: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/_scratch/accel/p3_2gpu_worker_B_out
 model_path: /projects/b1222/.cache/huggingface/hub/models--Qwen--Qwen2.5-1.5B-Instruct/snapshots/989aa7980e4cf806f80c7fef2b1adb7bc71aa306
 total_clients: 1

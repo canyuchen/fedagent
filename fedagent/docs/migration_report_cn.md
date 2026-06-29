@@ -69,7 +69,7 @@ fork（0.3.1）patch 了 `verl/trainer/.../ray_trainer_fed.py`，**只有一个*
 3. **CUDA-13 时代的 `nvidia-*-cu13` pip 包会覆盖 cu12 的 `.so`**（共享的 `nvidia/<lib>/lib/` 命名空间，
    最后安装的胜出）→ torch 在 12.8 驱动上加载 NCCL 2.29.7 → 在 FSDP
    param-broadcast 时 `ncclUnhandledCudaError`。修复：卸载 cu13 孤儿包 + `--force-reinstall` 那组 torch 三件套（已归档于
-   `_scratch/archived_diagnostics/_fix_nvidia_stack.sh`）。
+   `tools/verl08_migration/archived_diagnostics/_fix_nvidia_stack.sh`）。
 4. **sglang 拉来了 numpy 2.4**（破坏 vllm 的 numba，需要 ≤2.2）→ pin `numpy==2.2.6`。
 5. verl 的 `copy_to_local` 拒绝带尾随 `/` 的 model path。
 
@@ -236,7 +236,7 @@ centralized/local baseline 用 `T=70 × E=3`（= 210 epochs）而非 1 round × 
 ## 10. 坑与运维笔记
 
 - **Compute-node 的 `/tmp` 从 login node 不可见** —— 对某个 run 的 checkpoint 做带外 `ls`/`cat` 必须
-  经由 `srun --overlap --jobid=<JID>`。把脚本放在 GPFS（`_scratch/`）上，而非 login 本地的 scratchpad。
+  经由 `srun --overlap --jobid=<JID>`。把脚本放在 GPFS 路径上，而非 login 本地的 scratchpad。
 - **不要 `pkill -f <pattern>`**，当 `<pattern>` 出现在 wrapper 自己的命令行里时 —— 它会自匹配并
   杀掉 srun step（瞬间退出，零输出）。`run_fed` 无论如何都会管理服务生命周期。
 - 解释器拆解时（atexit，在 `fit()` 已保存之后）那个良性的 `RuntimeError: DataLoader worker ... killed by signal: Killed`

@@ -133,7 +133,7 @@ There are three distinct reasons, in order of impact.
 ### 2.1 ⭐ Dominant: per-(client×round) subprocess **cold-start** (~88%)
 Every `python -m fedagent.main_ppo_fed` subprocess rebuilds the **entire** stack before training
 step 1. Measured from a real **1.5B / max_seq_len=8192** run log
-(`_scratch/c4_final/homog/round_1/client_0/training.log`):
+(`<output_dir>/round_1/client_0/training.log`):
 
 ```
 20:17:49.776  Ray local instance started           (worker.py:2003)
@@ -223,7 +223,7 @@ Fresh runs that validate the analysis above.
 - Even in the *cheapest* case (tiny model, warm kernel + fs cache, 3 steps), **~76% of every subprocess is not training.** Scale to 1.5B + 8192-ctx + ~140 subprocesses and this is the **88%** measured on the windowed PPO smoke. Import alone (process→Ray) was **27 s warm vs 86 s on a cold GPFS read**.
 - → **#4 (persistent process) is THE lever**: it pays this ~94 s *once*, not ~140×.
 
-**Windowed-default crash — confirmed release blocker.** `rollout_mode=windowed` (the new default) + stock `agent.yaml` (registers only `gym_text`) → `AttributeError: 'GymTextAgentLoop' object has no attribute 'run_episode_windowed'` ([windowed_manager.py](../agent_loops/windowed_manager.py)#L152). Windowed was only ever green with the *explicit* `_scratch/windowed_poc` agent config; any config on the stock `agent.yaml` crashes. → the **paused windowed config migration** (register `gym_text_windowed`) is a prerequisite for windowed-as-default.
+**Windowed-default crash — confirmed release blocker.** `rollout_mode=windowed` (the new default) + stock `agent.yaml` (registers only `gym_text`) → `AttributeError: 'GymTextAgentLoop' object has no attribute 'run_episode_windowed'` ([windowed_manager.py](../agent_loops/windowed_manager.py)#L152). Windowed was only ever green with the *explicit* `tools/verl08_migration/poc/windowed` agent config; any config on the stock `agent.yaml` crashes. → the **paused windowed config migration** (register `gym_text_windowed`) is a prerequisite for windowed-as-default.
 
 **#2's benefit is config-specific (often ≈0).** WebShop *homogeneous* services (`partition_strategy=""`) become healthy in **seconds** — they build no catalog, so there is nothing for prewarm to overlap. #2 pays off only for **expensive-warmup** arms (catalog_split with large catalogs, ALFWorld game collection), and even then the per-subprocess cold-start (#4) dwarfs env warmup. **Conclusion: #2 stays a minor, opt-in lever** — correct and ready (CPU-validated), but not where the wall-clock is.
 
@@ -777,14 +777,14 @@ both rollout modes, so **no env-spec edit and no 176-config regeneration**:
 
 ```bash
 # lever #4 A/B (full 2-round federated GRPO, TinyGuess, 4 GPU): persistent vs subprocess
-python -m fedagent.fed.run_fed --config _scratch/accel/persist_full.yaml   # persistent: true
-python -m fedagent.fed.run_fed --config _scratch/accel/subproc_full.yaml   # persistent: false
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/persist_full.yaml   # persistent: true
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/subproc_full.yaml   # persistent: false
 python tools/verl08_migration/compare_fsdp_checkpoints.py \
   --a .../subproc_full_out/round_2/aggregated/checkpoints/global_step_0/actor \
   --b .../persist_full_out/round_2/aggregated/checkpoints/global_step_0/actor --atol 1e-4
 
 # windowed-default no-crash check (rollout_mode defaults to windowed):
-python -m fedagent.fed.run_fed --config _scratch/accel/tinyguess_windowed_check.yaml
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/tinyguess_windowed_check.yaml
 
 # enable lever #4: `persistent: true` (per-round) or `cross_round: true` (one process, whole run).
 ```

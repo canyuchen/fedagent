@@ -3,7 +3,7 @@
 # round_0..T-1 val_samples; orchestrator finals model_T after the worker stops.
 env_kind: webshop
 env_spec: config/envs/webshop.yaml
-val_env_spec: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/_scratch/accel/webshop_val_tiny.yaml
+val_env_spec: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/tools/verl08_migration/accel/webshop_val_tiny.yaml
 output_dir: /gpfs/projects/b1222/userdata/canyu/kangyu/fedagent/_scratch/accel/ws_xround_worker_eager_out
 model_path: /projects/b1222/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/7ae557604adf67be50417f59c2c2f167def9a775
 rollout_mode: concat

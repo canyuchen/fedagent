@@ -69,7 +69,7 @@ A new conda env (**py3.12**): verl 0.8 + **vllm 0.11.0** + sglang 0.5.2 + flashi
 3. **CUDA-13-era `nvidia-*-cu13` pip packages clobber the cu12 `.so`s** (shared `nvidia/<lib>/lib/` namespace,
    last-installed wins) → torch loads NCCL 2.29.7 on a 12.8 driver → `ncclUnhandledCudaError` at FSDP
    param-broadcast. Fix: uninstall the cu13 orphans + `--force-reinstall` the torch trio (archived at
-   `_scratch/archived_diagnostics/_fix_nvidia_stack.sh`).
+   `tools/verl08_migration/archived_diagnostics/_fix_nvidia_stack.sh`).
 4. **sglang pulled numpy 2.4** (breaks vllm's numba, needs ≤2.2) → pin `numpy==2.2.6`.
 5. verl `copy_to_local` rejects a model path with a trailing `/`.
 
@@ -236,7 +236,7 @@ variety from **rounds** (the round-threaded seed) — same total epochs, correct
 ## 10. Gotchas & operational notes
 
 - **Compute-node `/tmp` is invisible from the login node** — out-of-band `ls`/`cat` on a run's checkpoints must go
-  through `srun --overlap --jobid=<JID>`. Put scripts on GPFS (`_scratch/`), not the login-local scratchpad.
+  through `srun --overlap --jobid=<JID>`. Put scripts on a GPFS path, not the login-local scratchpad.
 - **Don't `pkill -f <pattern>`** when `<pattern>` appears in the wrapper's own command line — it self-matches and
   kills the srun step (instant exit, zero output). `run_fed` manages service lifecycle anyway.
 - The benign `RuntimeError: DataLoader worker ... killed by signal: Killed` at interpreter teardown (atexit, after
