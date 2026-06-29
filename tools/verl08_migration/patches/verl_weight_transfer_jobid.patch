@@ -1,0 +1,33 @@
+diff --git a/verl/workers/rollout/vllm_rollout/vllm_async_server.py b/verl/workers/rollout/vllm_rollout/vllm_async_server.py
+index d4194e1..9d1b151 100644
+--- a/verl/workers/rollout/vllm_rollout/vllm_async_server.py
++++ b/verl/workers/rollout/vllm_rollout/vllm_async_server.py
+@@ -119,7 +119,10 @@ class vLLMHttpServer:
+         # the same /tmp/rl-colocate-zmq-replica-0-rank-0.sock and one fails
+         # with EADDRINUSE; a stale socket from a crashed run trips the same
+         # error on restart.
+-        os.environ["VERL_RAY_JOB_ID"] = ray.get_runtime_context().get_job_id()
++        # FedAgent overlay: do NOT clobber a driver-supplied override (separate Ray clusters all
++        # assign the same first job_id 01000000 -> shared-/tmp weight-transfer socket collision);
++        # fall back to the real Ray job id only when unset (stock single-cluster behavior).
++        os.environ.setdefault("VERL_RAY_JOB_ID", ray.get_runtime_context().get_job_id())
+ 
+         self.config = self._init_config(config)
+         self.model_config = self._init_model_config(model_config)
+diff --git a/verl/workers/rollout/vllm_rollout/vllm_rollout.py b/verl/workers/rollout/vllm_rollout/vllm_rollout.py
+index fffe575..63e1ff2 100644
+--- a/verl/workers/rollout/vllm_rollout/vllm_rollout.py
++++ b/verl/workers/rollout/vllm_rollout/vllm_rollout.py
+@@ -104,7 +104,11 @@ class ServerAdapter(BaseRollout):
+         # verl jobs on the same host (or a new run after a crashed one with a
+         # stale socket file) cannot collide on the shared /tmp namespace.
+         local_rank = self.rollout_rank % local_world_size
+-        job_id = ray.get_runtime_context().get_job_id()
++        # FedAgent overlay: honor a driver-supplied VERL_RAY_JOB_ID so independent verl jobs in
++        # SEPARATE Ray clusters (each isolated cluster assigns the same first job_id 01000000)
++        # don't collide on the shared /tmp weight-transfer socket. Stock single-cluster runs leave
++        # it unset -> falls back to the real Ray job id (unchanged behavior).
++        job_id = os.environ.get("VERL_RAY_JOB_ID") or ray.get_runtime_context().get_job_id()
+         self.zmq_handle = f"ipc:///tmp/rl-colocate-zmq-{job_id}-replica-{self.replica_rank}-rank-{local_rank}.sock"
+ 
+         self.use_shm = not is_support_ipc()

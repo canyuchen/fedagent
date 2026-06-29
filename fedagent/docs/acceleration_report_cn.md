@@ -238,6 +238,51 @@ sequential-at-full-4-GPU。这是**铁律的例外**：对小模型，单节点 
 ≈2× 的大模型，单节点 #3 打平/更慢 → 那才是真正需要 **≥2 节点（一 client 一节点）** 的场景；编排器的
 外部 FedAvg 已经支持它，它需要一个并行的多节点 launcher（尚未构建）。
 
+### 9.1 并发-job 权重传输冲突（*第二个* bug）+ 修正后的 1-GPU-布局裁定
+
+把 #3 ⊗ #1 推到极端 —— **2 个 client 各占 1 GPU + eval 在空出的 2 GPU 上**（一个硬件分配的想法：给 eval 专用
+2 张卡、让它*藏起来*，是否打赢保持每 client 2 GPU？）—— 在节点上加了**第三个**并发 verl job，暴露出一个比 §9
+rendezvous 端口 bug 更深的冲突。
+
+**死锁。** 两个 trainer 在 0% GPU util 下**挂了 44 分钟**，`do_epoll_wait` 卡在 `update_weights`（FSDP→vLLM 权重
+同步）里。WebShop env 服务健康但**零 session** —— rollout 从未开始，所以这个挂起发生在第一步*之前*的权重 push。
+
+**根因：一个被相撞 job id 命名空间化的共享 `/tmp` socket。** verl 的权重同步（`bucketed_weight_transfer.py`）
+把权重经由一个**共享 `/tmp` 上的 ZMQ IPC socket** 送给 rollout 引擎：`ipc:///tmp/rl-colocate-zmq-<job_id>-replica-<r>-rank-<lr>.sock`，
+*正是*以 **Ray job id** 命名空间化来保持并发 job 互不相交。但 FedAgent 把每个 client/eval 跑成它**自己隔离的 Ray
+集群**（`RAY_TMPDIR`），而每个新集群分配的**第一个 job id 都是同一个 `01000000`**（已直接验证 —— 两个独立集群都
+返回 `01000000`）。所以三个 job 都算出**同一个** socket 路径 → 各 sender 的 `os.remove` + 重新 `bind` 竞态把它们
+交叉接线 → 权重 `send` 死锁。2-job 的情形（§9）此前是**靠运气没撞**；3 个 job 必死锁 —— 所以这威胁的是 **#3 本身**，
+而不只是 eval-parallel。
+
+**修复（overlay 优先 + 一个 2 行 verl patch）。** `run_fed.py` 现在给每个启动的 verl 子进程导出一个**唯一的
+`VERL_RAY_JOB_ID`** —— 一个模块级 `_RUN_TAG`（uuid）加上一个 role/client/round 后缀（train/eval/persistent）——
+在每次 verl 启动时设置。一个**对 `others/verl` 的 2 行 patch**（`vllm_rollout.py` 的 sender + `vllm_async_server.py`
+的 receiver-source）让两者**遵从这个覆盖**而非那个相撞的 job id；原生单集群 run（未设覆盖）**逐字节不变**。这是整条
+工作线中唯一有意的 verl-fork 例外 —— 一个真正的**上游假设修复**（verl 的 per-job 隔离假设了 ONE 个共享 Ray 集群；
+FedAgent 的 cluster-per-client 模型打破了它），值得提 PR。**与 §9 FedAvg 端口 bug 同样的教训** —— 两个修复都给共享
+主机资源（rendezvous 端口 / `/tmp` socket）一个 per-job 唯一的名字。已 GPU 验证：之前死锁的那个 3-job 布局现在三个
+全部闭合（`rc=0`；watcher 确认权重同步通过）。
+
+**修正后的速度裁定 —— 这个布局正确性 OK，但*不是*快路径。** 有了修复，3-job 4-GPU 布局干净共存（无 OOM；A/B 峰值
+26 GB、eval 40 GB），且 **eval 确实被藏起来** —— 独立的 val pass 在 **407 s** 完成，而训练跑了 **995 s**，额外
+wall-clock 成本为零。但 1-GPU 训练占主导：
+
+| 布局（4-GPU 节点，M=2，per-round） | wall |
+|---|---|
+| 4-GPU 单 client（无 client 并行） | 558s |
+| **#3 —— 2 client × 2 GPU 并发**（仅训练） | **727s** |
+| #3 + **`eval_mode=worker`**（热引擎 eval，无 eval 冷启动） | **≈ 845s** |
+| #3 + 串行（冷启动）eval | 727 + 407 ≈ 1134s |
+| **本布局 —— 2 client × 1 GPU + 2-GPU eval（隐藏）** | **995s** |
+
+1-GPU 训练实测 **~180–226 s/optimizer-step**，**995 s/round** —— 对比 2 GPU 的 **725 s**（**1.37× 慢，不是 2×**：
+WebShop rollout 是 **env-latency-bound** 的，所以把 GPU 减半几乎不动 rollout；只有 FSDP fwd/bwd + vLLM generation
+缩放，那是 wall-clock 中的少数）。藏起 eval 省了 ~407 s，但 1-GPU 的代价（995 − 727 = **+268 s/round**）是**每个
+round** 都付，而正确的 eval 基线不是*串行* eval —— 是 **`eval_mode=worker`**，它已经近乎免费。所以 **#3（2 GPU/client）
++ worker eval 才是推荐的单节点快路径；1-GPU 拆分不是默认** —— 别为了腾出 eval 卡就把训练饿到 1 GPU。这次调查的持久
+价值是那个**权重传输修复**，它为*每一种*并发-job 布局加固了 #3 和 eval-parallel。
+
 ---
 
 ## 10. 论文配置验证（接线 + 可行性）
@@ -322,6 +367,7 @@ per-client 路由、4 GPU 上的 **G=8 内存**、完整的 3-epoch round、n=50
 | cross-mode 权重等价 1.5B | 3.8e-6 / 7.6e-6 | worker vs inline 聚合 |
 | #3 scaling | t1(4)=558, t1(2)=725 (1.30×) | 1 client, eval 关, paper |
 | #3 parallel vs sequential | 727s vs 1116s (−35%) | 2 client, 1.5B |
+| #3 1-GPU/client + 2-GPU 隐藏 eval（§9.1） | t1(1)=995s/round（eval 407s 隐藏）；不是快路径 | 2 client, 1.5B |
 | paper 单位成本 | 475s/train-round, 630s/n=500-eval | 1.5B worker, G=8 |
 | paper 70-round 估算 | 12h (test_freq=5) / 22h (every-round) | 一个节点 |
 

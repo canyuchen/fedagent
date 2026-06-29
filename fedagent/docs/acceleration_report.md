@@ -249,6 +249,57 @@ the iron law**: for small models, single-node #3 *is* a real win. **Caveat:** fo
 scaling ≈2×, single-node #3 ties/loses → that's the regime that genuinely needs **≥2 nodes (one client per node)**;
 the orchestrator's external FedAvg already supports it, it needs a parallel multi-node launcher (not yet built).
 
+### 9.1 The concurrent-job weight-transfer collision (the *second* bug) + the corrected 1-GPU-layout verdict
+
+Pushing #3 ⊗ #1 to its extreme — **2 clients each on 1 GPU + eval on the spare 2 GPUs** (a hardware-allocation
+idea: does dedicating 2 cards to eval, so it *hides*, beat keeping 2 GPUs/client?) — added a **3rd** concurrent
+verl job to the node and exposed a collision deeper than the §9 rendezvous-port bug.
+
+**The deadlock.** Both trainers hung **44 min at 0% GPU util**, stuck in `do_epoll_wait` inside `update_weights`
+(the FSDP→vLLM weight sync). The WebShop env services were healthy with **zero sessions** — rollout never
+started, so the hang was *before* the first step, in the weight push.
+
+**Root cause: a shared-`/tmp` socket namespaced by a colliding job id.** verl's weight sync
+(`bucketed_weight_transfer.py`) ships weights to the rollout engine over a **ZMQ IPC socket on the shared
+`/tmp`**: `ipc:///tmp/rl-colocate-zmq-<job_id>-replica-<r>-rank-<lr>.sock`, namespaced by the **Ray job id**
+*precisely* to keep concurrent jobs disjoint. But FedAgent runs each client/eval as its **own isolated Ray
+cluster** (`RAY_TMPDIR`), and every fresh cluster assigns the **same first job id `01000000`** (verified
+directly — two separate clusters both returned `01000000`). So all three jobs computed the **same** socket path
+→ the senders' `os.remove` + re-`bind` race cross-wired them → the weight `send` deadlocked. The 2-job case
+(§9) had been **race-lucky**; 3 jobs deadlock reliably — so this threatened **#3 itself**, not just eval-parallel.
+
+**The fix (overlay-first + a 2-line verl patch).** `run_fed.py` now exports a **unique `VERL_RAY_JOB_ID` per
+launched verl subprocess** — a module-level `_RUN_TAG` (uuid) plus a role/client/round suffix
+(train/eval/persistent) — set on every verl launch. A **2-line patch to `others/verl`** (`vllm_rollout.py`
+sender + `vllm_async_server.py` receiver-source) makes both **honor that override** instead of the colliding
+job id; stock single-cluster runs (override unset) are **byte-for-byte unchanged**. This is the one deliberate
+verl-fork exception in the whole workstream — a genuine **upstream-assumption fix** (verl's per-job isolation
+assumes ONE shared Ray cluster; FedAgent's cluster-per-client model breaks it), PR-worthy. **Same lesson as the
+§9 FedAvg-port bug** — both fixes give the shared-host resource (rendezvous port / `/tmp` socket) a
+per-job-unique name. GPU-validated: the exact 3-job layout that deadlocked now closes all three (`rc=0`; a
+watcher confirmed weight-sync passed).
+
+**The corrected speed verdict — this layout is correctness-OK but *not* the fast path.** With the fix, the 3-job
+4-GPU layout coexists cleanly (no OOM; peak A/B 26 GB, eval 40 GB) and **eval is genuinely hidden** — the
+standalone val pass finished in **407 s** while training ran **995 s**, costing zero extra wall-clock. But 1-GPU
+training dominates:
+
+| layout (4-GPU node, M=2, per-round) | wall |
+|---|---|
+| 4-GPU solo client (no client-parallelism) | 558s |
+| **#3 — 2 client × 2 GPU concurrent** (train only) | **727s** |
+| #3 + **`eval_mode=worker`** (hot-engine eval, no eval cold-start) | **≈ 845s** |
+| #3 + serial (cold-start) eval | 727 + 407 ≈ 1134s |
+| **this layout — 2 client × 1 GPU + 2-GPU eval (hidden)** | **995s** |
+
+1-GPU training measured **~180–226 s/optimizer-step**, **995 s/round** — vs **725 s** at 2 GPU (**1.37× slower,
+not 2×**: the WebShop rollout is **env-latency-bound**, so halving GPUs barely moves the rollout; only FSDP
+fwd/bwd + vLLM generation scale, a minority of wall-clock). Hiding eval saves ~407 s, but the 1-GPU penalty
+(995 − 727 = **+268 s/round**) is paid **every round**, and the right eval baseline isn't *serial* eval — it's
+**`eval_mode=worker`**, already nearly free. So **#3 (2 GPU/client) + worker eval is the recommended single-node
+fast path; the 1-GPU split is not a default** — don't starve training to free eval cards. The investigation's
+lasting value is the **weight-transfer fix**, which hardens #3 and eval-parallel for *every* concurrent-job layout.
+
 ---
 
 ## 10. Paper-config validation (wiring + feasibility)
@@ -334,6 +385,7 @@ multi-day campaign**, not yet run.
 | cross-mode weight equiv 1.5B | 3.8e-6 / 7.6e-6 | worker vs inline aggregates |
 | #3 scaling | t1(4)=558, t1(2)=725 (1.30×) | 1 client, eval off, paper |
 | #3 parallel vs sequential | 727s vs 1116s (−35%) | 2 client, 1.5B |
+| #3 1-GPU/client + 2-GPU hidden eval (§9.1) | t1(1)=995s/round (eval 407s hidden); not the fast path | 2 client, 1.5B |
 | paper unit costs | 475s/train-round, 630s/n=500-eval | 1.5B worker, G=8 |
 | paper 70-round estimate | 12h (test_freq=5) / 22h (every-round) | one node |
 

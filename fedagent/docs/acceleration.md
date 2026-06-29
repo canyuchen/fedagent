@@ -325,9 +325,11 @@ to sequential (FedAvg is order-free; the per-client env seed is `base_seed + rou
 `world_size` → shard layout (aggregator reads `world_size_of` dynamically; same global batch ⇒ same numerics).
 
 **GPU-validated on ONE node (2 client × 2 GPU, 1.5B, paper settings) — and it's ~35% faster, not a wash.**
-Two independent verl/Ray/vLLM jobs **coexist cleanly** on the 4-GPU node: engines load on disjoint pairs
+Two independent verl/Ray/vLLM jobs **coexist** on the 4-GPU node: engines load on disjoint pairs
 (6519 MiB ×4), no Ray-port / GPU / `/dev/shm` collision — isolation is just per-job `CUDA_VISIBLE_DEVICES`
-+ `RAY_TMPDIR`. Timing:
++ `RAY_TMPDIR`. (One *non-obvious* shared-`/tmp` exception — the FSDP→vLLM weight-transfer socket — was
+**race-lucky** at 2 jobs and only deadlocked once a 3rd concurrent job joined; **second robustness bug**
+below, and the reason #3's own coexistence is only safe *after* that fix.) Timing:
 
 | arm | wall-clock |
 |---|---|
@@ -355,6 +357,25 @@ same path. GPU-validated: the exact concurrent A+B that failed now closes **both
 `__del__` teardown noise in *both* runs; dmesg showed no OOM-killer, node RAM 966 G / `/dev/shm` 504 G /
 cgroup unlimited all free). The real failure was the 29500 collision one step later.
 
+**Second robustness bug found + fixed (FSDP→vLLM weight-transfer socket — same family).** Pushing to a
+**THIRD** concurrent verl job (2 train + 1 eval, §7.7) exposed a deeper collision. verl's FSDP→vLLM weight
+sync (`bucketed_weight_transfer.py`) ships the rollout engine its new weights over a **ZMQ IPC socket on
+the shared `/tmp`**: `ipc:///tmp/rl-colocate-zmq-<job_id>-replica-<r>-rank-<lr>.sock`, namespaced by the
+**Ray job id** *precisely* to keep concurrent jobs disjoint. But FedAgent runs each client/eval as its
+**own isolated Ray cluster** (`RAY_TMPDIR`), and every fresh cluster assigns the **same first job id
+`01000000`** (verified — two clusters, identical id) → all jobs compute the **same** socket path → the
+senders' `os.remove` + re-`bind` race cross-wires them and the weight `send` **deadlocks** (GPU-confirmed:
+both trainers hung **44 min at 0 % util**, `do_epoll_wait` inside `update_weights`; env services healthy
+with **zero sessions** — rollout never started). The 2-client case had been **race-lucky**; 3 jobs deadlock
+reliably — so this threatened **#3 itself**, not just eval-parallel. **Fix (overlay-first):** `run_fed`
+exports a **unique `VERL_RAY_JOB_ID` per launched verl subprocess** (per-process tag + role/client/round),
+and a **2-line verl patch** makes the sender (`vllm_rollout.py`) and the receiver (`vllm_async_server.py`)
+**honor that override** instead of the colliding job id; stock single-cluster runs (override unset) are
+byte-for-byte unchanged. GPU-validated: the exact 3-job layout that deadlocked now closes all three
+(`rc=0`; watcher saw weight-sync pass). **Same lesson as the FedAvg-port bug — verl's per-job isolation
+assumes ONE shared Ray cluster; FedAgent's cluster-per-client model breaks that assumption** — both fixes
+give the shared-host resource (rendezvous port / `/tmp` socket) a per-job-unique name.
+
 ### Lever #1 — eval(r) ∥ train(r+1) *(needs extra GPU; bounded)*
 Both read `model_r` (§2.4) → independent. Run eval on a spare allocation while round `r+1` trains.
 Eval runs **every round** (the per-round red line, §7.4), and each `inline` eval is a full cold-start
@@ -376,7 +397,7 @@ overlaps it onto spare GPUs. Pure measurement ⇒ **zero numerical risk.**
 |---|---|---|
 | #2 env prewarm | none (pure scheduling) | ✅ safe |
 | #1 eval ∥ train | none (measurement) | ✅ safe |
-| #3 parallel clients | none (FedAvg order-free, client-indexed seed) | ✅ safe; single-node 2×2 GPU-validated (−35% on 1.5B) + FedAvg rendezvous-port bug fixed (`--standalone`, §Lever #3) |
+| #3 parallel clients | none (FedAvg order-free, client-indexed seed) | ✅ safe; single-node 2×2 GPU-validated (−35% on 1.5B) + **two** concurrency bugs fixed: FedAvg rendezvous-port (`--standalone`) and FSDP→vLLM weight-transfer socket (`VERL_RAY_JOB_ID`) — §Lever #3 / §7.7 |
 | #4 persistent trainer | **none measured**: smoke max\|Δ\|≈1e-6, full-loop max\|Δ\|=1.13e-5; high IF resets missed | ✅ validated (§7) incl. full-loop + PPO critic reload; confirm at larger step counts |
 
 ---
@@ -633,13 +654,55 @@ The new `rollout_mode=windowed` default crashed on the stock `agent.yaml`
    real paper-scale (1.5B) persistent run is the final integration check.
 3. **vLLM sampler-RNG / /dev/shm teardown** at long horizons (benign teardown noise — `DataLoader
    worker killed` / `resource_tracker KeyError` at exit, rc still 0; watch + add
-   `aggressive_empty_cache` / `SamplingParams.seed` if it ever bites).
+   `aggressive_empty_cache` / `SamplingParams.seed` if it ever bites). *(To quiet the `DataLoader
+   worker killed` line specifically: drop `data.dataloader_num_workers` 8 → 0/2 in the smoke/accel
+   profile — it's a teardown-only `__del__` SIGKILL, rc unaffected.)*
+
+### 7.7 "2 train on 1 GPU + 2 GPU eval" layout — correctness OK, **not** the fast path
+**Question (a hardware-allocation idea):** on the 4-GPU node, is **2 clients each on 1 GPU (parallel) +
+eval on the spare 2 GPUs** — i.e. **#3 ⊗ #1** — faster than keeping 2 GPUs/client? It *hides* eval on
+dedicated cards, which #3-at-full-4-GPU cannot. GPU-tested at 1.5B, paper settings, n=64 WebShop val.
+
+**What it proves (all GPU-confirmed):**
+- **3-job 4-GPU coexistence works** — 2 trainers (1 GPU each) + 1 eval (2 GPU) load on disjoint cards
+  (peak A/B 26 GB, eval 40 GB), no OOM — **but only after** the weight-transfer-socket fix (§Lever #3,
+  *second* bug; this layout is exactly what exposed the 3-job deadlock).
+- **Eval is genuinely hidden:** the standalone val pass (faithful — drives `run_fed._build_eval` → the
+  same verl val-only code path the loop's eval uses) finished in **407 s** while training ran **995 s**,
+  so eval held the spare cards &lt;½ the round and cost **zero** extra wall-clock.
+
+**But it is not the fast path** — 1-GPU training dominates:
+
+| layout (4-GPU node, M=2, per-round) | wall-clock |
+|---|---|
+| 4-GPU solo client (no client-parallelism) | 558 s |
+| **#3 — 2 client × 2 GPU concurrent** (train only) | **727 s** |
+| #3 + **`eval_mode=worker`** (hot-engine eval, no eval cold-start) | **≈ 845 s** |
+| #3 + serial (cold-start) eval | 727 + 407 ≈ 1134 s |
+| **this layout — 2 client × 1 GPU + 2-GPU eval (hidden)** | **995 s** |
+
+1-GPU training measured **~180–226 s/optimizer-step**, **995 s** for the round — vs **725 s** at 2 GPU
+(**1.37× slower, not 2×**: the WebShop rollout is **env-latency-bound**, so halving GPUs barely moves the
+rollout; only the FSDP fwd/bwd + vLLM generation scale, and those are a minority of the wall-clock).
+Hiding eval saves ~407 s, but the 1-GPU penalty (995 − 727 = **+268 s/round**) is paid **every round**,
+and the right baseline isn't *serial* eval — it's **`eval_mode=worker`**, which already makes eval nearly
+free (hot engine, no second cold-start). So **#3 (2 GPU/client) + worker eval (≈ 845 s) beats
+this layout's 995 s**: don't starve training to 1 GPU just to free eval cards. **Verdict: correctness-OK
+and a clean demonstration that eval hides on dedicated GPUs — but #3 + worker eval is the recommended
+single-node fast path; the 1-GPU split is not a default.** The investigation's lasting value is the
+**weight-transfer fix** above, which hardens #3 and eval-parallel for *every* concurrent-job layout.
 
 ---
 
 ## 8. Implementation reference (this session's changes)
 
-Everything below is **overlay-only (no verl fork)** and currently **local/uncommitted**.
+Everything below is **overlay-only** — with **one deliberate exception**: a **2-line patch to
+`others/verl`** (`vllm_rollout.py` + `vllm_async_server.py`) so the FSDP→vLLM weight-transfer socket
+honors a `VERL_RAY_JOB_ID` override (§7.7 / §Lever #3). verl itself stays **pristine upstream**; the two
+lines are captured as
+[`tools/verl08_migration/patches/verl_weight_transfer_jobid.patch`](../../tools/verl08_migration/patches/verl_weight_transfer_jobid.patch)
+(applied at env setup, base commit `7aed6b2`). That is a genuine **upstream-assumption fix** (verl's
+per-job isolation assumes one shared Ray cluster) and is PR-worthy; everything else remains no-fork.
 
 ### 8.1 Files added / changed
 
@@ -657,7 +720,7 @@ Everything below is **overlay-only (no verl fork)** and currently **local/uncomm
 | file | change |
 |---|---|
 | [sitecustomize.py](../../sitecustomize.py) | gated `FEDAGENT_PERSISTENT=1` → `install_deferred_persistent_patch()` (every Ray worker gets the reset methods) |
-| [run_fed.py](../fed/run_fed.py) | **#4 per-round:** `persistent` flag + `run_round_persistent()` + run-loop branch. **#4 cross-round:** `cross_round` flag + `BgProc` (line-buffered log) + `_wait_signal` + `stop_persistent_cross_round` + signal-file handshake. **routing:** `client_service_url()` + plan `service_url` + `FEDAGENT_SERVICE_URL_FILE`. **eval modes (§7.4):** `eval_mode` inline/parallel/shared/worker — `_build_eval`/`eval_global`/`launch_eval_async`/`collect_eval`; per-round eval **every round** (`if do_eval:`, not `r%test_freq`); `cross_round`+inline → auto-fallback to per-round. **client-end circles (§7.4):** `client_end_eval` flag + `eval_client()` (merge client actor → `client_<c>/hf` + eval on val service, before cleanup) + `merge_to_hf(out_hf=)`/`_build_eval(client_id=)`; emits `client_curve` in summary. **metrics:** flush BgProc + parse the launch log (cross-round) so `metrics.json` isn't `[]`. **#2:** `prewarm_next_round_services()`. **windowed:** `history_length_env()`. **#3 (concurrent aggregation, §Lever #3):** `fedavg()` uses `torchrun --standalone` + clears `MASTER_*`/`RANK`/`WORLD_SIZE` so two clients/experiments aggregating on one node don't collide on the default rendezvous port 29500 |
+| [run_fed.py](../fed/run_fed.py) | **#4 per-round:** `persistent` flag + `run_round_persistent()` + run-loop branch. **#4 cross-round:** `cross_round` flag + `BgProc` (line-buffered log) + `_wait_signal` + `stop_persistent_cross_round` + signal-file handshake. **routing:** `client_service_url()` + plan `service_url` + `FEDAGENT_SERVICE_URL_FILE`. **eval modes (§7.4):** `eval_mode` inline/parallel/shared/worker — `_build_eval`/`eval_global`/`launch_eval_async`/`collect_eval`; per-round eval **every round** (`if do_eval:`, not `r%test_freq`); `cross_round`+inline → auto-fallback to per-round. **client-end circles (§7.4):** `client_end_eval` flag + `eval_client()` (merge client actor → `client_<c>/hf` + eval on val service, before cleanup) + `merge_to_hf(out_hf=)`/`_build_eval(client_id=)`; emits `client_curve` in summary. **metrics:** flush BgProc + parse the launch log (cross-round) so `metrics.json` isn't `[]`. **#2:** `prewarm_next_round_services()`. **windowed:** `history_length_env()`. **#3 (concurrent aggregation, §Lever #3):** `fedavg()` uses `torchrun --standalone` + clears `MASTER_*`/`RANK`/`WORLD_SIZE` so two clients/experiments aggregating on one node don't collide on the default rendezvous port 29500. **#3/#1 (concurrent weight transfer, §7.7):** module-level `_RUN_TAG` (uuid) + `env["VERL_RAY_JOB_ID"]` set on every verl launch (train/eval/persistent, `_RUN_TAG`+role/client/round) so isolated Ray clusters (all `job_id=01000000`) don't collide on the `/tmp` FSDP→vLLM weight-transfer ZMQ socket — pairs with the 2-line verl honor-override patch. **logging:** `stream()` now `lf.flush()`es each line so an inner log isn't 0-byte during a run or hang |
 | [fedagent_ppo.yaml](../config/fedagent_ppo.yaml) | added `critic:` block (PPO/gae value-model micro-batch; inert under GRPO) |
 | `fedagent/config/paper/*.yaml` (176) | **regenerated** to the windowed `response_length=512` budget (was `6144`/`8192`); via `tools/verl08_migration/gen_paper_configs.py --out fedagent/config/paper` |
 | [base.py](../envs/base.py) | `resolve_service_url(env_var, cfg, default)` — file-channel routing helper (file > env-var > config > default) |

@@ -41,6 +41,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -50,6 +51,16 @@ from omegaconf import OmegaConf, open_dict
 PKG_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = PKG_DIR.parent
 AGGREGATOR = REPO_ROOT / "tools" / "verl08_migration" / "aggregate_fedavg_fsdp.py"
+
+# Per-PROCESS tag for the FSDP->vLLM weight-transfer IPC socket namespace. verl derives that
+# socket path (/tmp/rl-colocate-zmq-<job_id>-...) from the Ray job id to keep concurrent jobs
+# disjoint -- but every ISOLATED Ray cluster (one per client/eval subprocess, RAY_TMPDIR-separated)
+# assigns the SAME first job id (01000000), so concurrent clients/eval on one node compute the
+# SAME path on the shared /tmp and the weight sync DEADLOCKS (GPU-confirmed). We export a unique
+# VERL_RAY_JOB_ID per launched verl subprocess (honored by the small verl patch in vllm_rollout.py
+# + vllm_async_server.py) so each job's socket path is disjoint. Unique per process (this tag) AND
+# per launch (role/client/round suffix below) -> safe for client-parallel and eval||train alike.
+_RUN_TAG = uuid.uuid4().hex[:8]
 
 DEFAULTS = {
     "model_path": "",                       # "" => auto-discover Qwen2.5-0.5B-Instruct
@@ -242,6 +253,7 @@ def stream(cmd: List[str], env: dict, log_path: Path, tag: str) -> int:
             sys.stdout.write(f"  [{tag}] {line}")
             sys.stdout.flush()
             lf.write(line)
+            lf.flush()   # else the inner log buffers (0 bytes) until exit -> blind during a run or hang
         proc.wait()
     return proc.returncode
 
@@ -705,6 +717,8 @@ def _build_eval(cfg, model_path: str, round_num: int, env_base: dict, val_url: s
     inject_rollout_mode(cmd, cfg)                            # windowed (default) -> WindowedAgentLoopManager
     env = dict(env_base)
     env.pop("FEDPROX_MU", None)                              # eval must never enable the proximal term
+    env["VERL_RAY_JOB_ID"] = (f"{_RUN_TAG}-eval-r{round_num}"
+                              + (f"-c{client_id}" if client_id is not None else ""))  # disjoint socket
     if gpu_ids is not None:
         env["CUDA_VISIBLE_DEVICES"] = gpu_ids               # pin to a disjoint subset (parallel mode)
     if cfg.env_kind == "webshop":
@@ -875,6 +889,7 @@ def run_client(cfg, round_num: int, client_id: int, model_path: str,
     # term every client would train on the SAME goals every round. Stride 100 (round) + client_id
     # (<100) is collision-free and keeps AgenticDataset's seed*100000 < 2**32.
     env["FEDAGENT_BASE_SEED"] = str(cfg.base_seed + round_num * 100 + client_id)
+    env["VERL_RAY_JOB_ID"] = f"{_RUN_TAG}-train-c{client_id}-r{round_num}"  # disjoint weight-xfer socket
     if cfg.env_kind == "webshop":
         # talk to THIS client's WebShop service (its disjoint Catalog-Split env)
         env["WEBSHOP_SERVICE_URL"] = webshop_service_url(cfg, client_id)
@@ -996,6 +1011,7 @@ def run_round_persistent(cfg, round_num: int, selected: List[int], model_path: s
 
         env = dict(env_base)
         env["FEDAGENT_PERSISTENT"] = "1"             # sitecustomize -> arm the reload patch on workers
+        env["VERL_RAY_JOB_ID"] = f"{_RUN_TAG}-persist"  # disjoint weight-xfer socket (long-lived worker)
         env["FEDAGENT_PERSISTENT_PLAN"] = str(plan_path)
         if str(cfg.get("eval_mode", "inline")).lower() == "worker" and cfg.get("val_env_spec"):
             # eval_mode=worker: the worker evals each round's starting model on its HOT engine (no
