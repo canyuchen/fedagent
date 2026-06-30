@@ -777,14 +777,14 @@ both rollout modes, so **no env-spec edit and no 176-config regeneration**:
 
 ```bash
 # lever #4 A/B (full 2-round federated GRPO, TinyGuess, 4 GPU): persistent vs subprocess
-python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/persist_full.yaml   # persistent: true
-python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/subproc_full.yaml   # persistent: false
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/dev/persist_full.yaml   # persistent: true
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/dev/subproc_full.yaml   # persistent: false
 python tools/verl08_migration/compare_fsdp_checkpoints.py \
   --a .../subproc_full_out/round_2/aggregated/checkpoints/global_step_0/actor \
   --b .../persist_full_out/round_2/aggregated/checkpoints/global_step_0/actor --atol 1e-4
 
 # windowed-default no-crash check (rollout_mode defaults to windowed):
-python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/tinyguess_windowed_check.yaml
+python -m fedagent.fed.run_fed --config tools/verl08_migration/accel/dev/tinyguess_windowed_check.yaml
 
 # enable lever #4: `persistent: true` (per-round) or `cross_round: true` (one process, whole run).
 ```

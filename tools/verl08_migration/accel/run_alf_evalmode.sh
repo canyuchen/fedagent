@@ -19,7 +19,7 @@ for mode in inline parallel shared worker; do
   export RAY_TMPDIR=/tmp/ray_alfem_$mode; mkdir -p "$RAY_TMPDIR"
   rm -rf runs/alf_em/$mode
   c0=$(date +%s); echo "[$mode] START $(date +%T)" >> "$BAR"
-  python -u -m fedagent.fed.run_fed --config tools/verl08_migration/accel/alf_em_$mode.yaml > runs/alf_em/$mode.log 2>&1
+  python -u -m fedagent.fed.run_fed --config tools/verl08_migration/accel/alfworld/alf_em_$mode.yaml > runs/alf_em/$mode.log 2>&1
   echo "[$mode] rc=$? wall=$(($(date +%s)-c0))s $(date +%T)" >> "$BAR"
 done
 echo "BARRIER total=$(($(date +%s)-t0))s" >> "$BAR"

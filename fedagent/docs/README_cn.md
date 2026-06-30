@@ -14,6 +14,7 @@
 | [heterogeneity.md](./heterogeneity.md) | 两级（task vs environment）异质套件，附每个 arm 的构造数学。 |
 | [reproducing.md](./reproducing.md) | 论文的 176-config 矩阵映射到运行命令；3-seed 复现；baselines。 |
 | [acceleration_report.md](./acceleration_report.md) | **加速与验证 —— 完整走读**：每个 lever 与 feature 的深入讲解（持久化 trainer、eval 模式、client-parallel #3、等价性）、各项调查 + 修正，以及如何运行。配套：[acceleration_results.md](./acceleration_results.md)（数字一览）· [acceleration.md](./acceleration.md)（最初的分析与计划）。 |
+| [alfworld_testing.md](./alfworld_testing.md) | **为什么 ALFWorld 该这么测**：env 无关的修复边界（正确性已覆盖）、ALFWorld 更长/更重/更大的 rollout 改变的墙钟经济学，以及 Tier-1/Tier-2 测试计划 —— 两个可能在 ALFWorld 上*翻转*的 WebShop 结论（1-GPU 惩罚、藏 eval）。 |
 | [extending.md](./extending.md) | 扩展点：新增 dataset/env、异质策略、RL 算法或聚合规则。 |
 | [migration.md](./migration.md) · [migration_report.md](./migration_report.md) | **迁移** —— `migration.md` 是浓缩的保真记录（相对 verl-agent-0.3.1 fork 改了什么 + 科学攸关的对齐项）；`migration_report.md` 是**完整的工程走读**（路线决策、依赖鏖战，以及 checkpoint / agent-loop / env-service / windowed 的深入剖析）。 |
 

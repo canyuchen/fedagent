@@ -430,3 +430,34 @@ id `01000000` → identical `/tmp` socket → 44-min hang at 0% util in `update_
 exports a unique `VERL_RAY_JOB_ID` per verl subprocess + a 2-line verl honor-override patch
 (`tools/verl08_migration/patches/`); GPU-validated rc=0 on the exact 3-job layout. Same family as the
 earlier FedAvg-29500 rendezvous fix. Commits `f4cb8ca` / `aa145f5`.
+
+## ALFWorld acceleration economics (2026-06-30)
+
+Resolves the two falsifiable predictions in [`docs/alfworld_testing.md`](docs/alfworld_testing.md) §6.
+Configs: `tools/verl08_migration/accel/alfworld/` (reorganized accel/ into env subfolders + per-folder
+READMEs this round). **Setup:** 1.5B, 4×H100 (qgpu3021), `response_length=4096`, in-loop val n=48
+(`valid_seen` subset), sweep methodology = minimal training (`epochs=1, total_training_steps=1`/round).
+
+- **Eval-mode sweep** (2 client × 2 round, eval every round): **worker 3509s < parallel 3620s <
+  shared 4560s < inline 4738s**. Eval-**decoupled** {worker, parallel} beat eval-**coupled**
+  {shared, inline} by ~25–30%. **This FLIPS the WebShop ranking** (`parallel<worker<inline<shared`):
+  on ALFWorld's heavy eval, worker's cross-round cold-start amortization overtakes parallel, and
+  inline's per-round eval-engine re-spin makes it the **slowest** (not shared). ALFWorld single-node
+  fast path = `worker` or `parallel`. (`alf_em_{inline,parallel,shared,worker}.yaml`.)
+- **GPU scaling** (`alf_scale_g{1,2,4}.yaml`, eval off, 1 step): `timing_s/step` 534 / 387 / 298 s at
+  1/2/4 GPU. Decomposition: **`gen` (rollout) is FLAT — 228→225→219s** (env-latency-bound; `_TW_LOCK` +
+  `pool_size=8` gate it, not GPU compute) while **`update_actor` scales ~linearly 140→43s**. The
+  per-step 1-GPU penalty is **+38% ≈ WebShop** (it does NOT shrink); the +21% *wall* figure is a
+  1-step fixed-overhead (~490s service-load/init) artifact. Lever for ALFWorld rollout = `pool_size`, not GPUs.
+- **Concurrency (Tier-1): PASS** — 2 independent ALFWorld training jobs on GPUs {0,1}+{2,3}, both
+  weight-syncing on the shared `/tmp` socket, both `rc=0` (A 392s, B 473s). The `VERL_RAY_JOB_ID` fix
+  holds under ALFWorld's heavier 2-service load. (`alf_conc_{A,B}.yaml`.)
+
+**Prediction scorecard:** mechanisms confirmed (env-bound rollout ✅, decoupling-eval-matters ✅); two
+magnitude/ordering predictions FLIPPED (per-step 1-GPU penalty didn't shrink ✗; **inline** not shared is
+the eval-mode loser ✗). De-risk smoke (0.5B) GREEN earlier.
+
+**Infra lesson (cost 2 dead runs):** orphaned `srun --overlap` drivers were SIGKILL'd when their
+launching step's **cgroup** was cleaned — `setsid` escapes the session but not the cgroup. Durable
+pattern: run the driver in the **foreground of a long-lived step**; monitor via **GPFS reads** + **log-mtime
+staleness** liveness (never self-matching `pgrep`). Banked to memory.

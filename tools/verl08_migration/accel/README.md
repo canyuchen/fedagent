@@ -1,31 +1,46 @@
-# Acceleration benchmark — configs, drivers, helpers
+# Acceleration & env benchmarks — configs, drivers, helpers
 
-The reproducibility artifacts behind the acceleration workstream
-([`fedagent/docs/acceleration.md`](../../../fedagent/docs/acceleration.md) +
-[`acceleration_results.md`](../../../fedagent/docs/acceleration_results.md)). Moved here out of the
-(gitignored, 1.3 TB) `_scratch/` so the GPU-validated results stay reproducible from the repo. These
-are **one-off experiment scaffolding**, not maintained APIs.
+Reproducibility artifacts behind the acceleration + ALFWorld workstreams
+([`fedagent/docs/acceleration.md`](../../../fedagent/docs/acceleration.md),
+[`acceleration_results.md`](../../../fedagent/docs/acceleration_results.md),
+[`alfworld_testing.md`](../../../fedagent/docs/alfworld_testing.md)). These are **one-off experiment
+scaffolding**, not maintained APIs — kept in-repo (out of the retired, gitignored `_scratch/`) so the
+GPU-validated results stay reproducible.
 
-> **Paths.** Configs/drivers were authored to run from `_scratch/accel/` and still reference that
-> path for `output_dir` / per-config logs (run *output*, intentionally gitignored — never committed).
-> To re-run after the move: invoke `run_fed`/the driver with the config from **this** dir and point
-> `output_dir` at any gitignored scratch location. Source lives in the repo; outputs do not.
+## Layout
 
-## Configs → documented result
+```
+accel/
+├── webshop/          WebShop configs — eval-mode sweep, cross-round, client-end marks, prewarm
+├── alfworld/         ALFWorld configs — eval-mode sweep, GPU-scaling, concurrency, smoke (+ val spec)
+├── client_parallel/  #3 "parallel clients within a round" layout configs (p3_*)
+├── dev/              equivalence / persistence dev smokes (persistent #4, cross-round, PPO, TinyGuess)
+├── helpers/          standalone eval + weight-compare + critic-diag scripts
+├── run_*.sh          drivers (entry points; run from repo root)
+└── *_val_*.yaml, p3_eval_2gpu.yaml   shared val/eval specs (referenced by configs via absolute path)
+```
 
-| config(s) / driver | result | doc |
+Each subfolder has its own `README.md` mapping its configs → the result they produced → the doc section.
+
+| subfolder | what | doc |
 |---|---|---|
-| `p3_1gpu_A/B.yaml`, `p3_eval_2gpu.yaml`, `webshop_val_64.yaml`, `run_complete.sh`, `run_2x1gpu.sh`, `standalone_eval.py` | "2 train on 1 GPU + 2 GPU eval" layout: t1(1)=995s, eval 407s **hidden**, the 3-job ZMQ deadlock + fix; **not** the fast path | §7.7 / §Lever #3 |
-| `p3_2gpu_worker_A/B.yaml`, `run_worker3.sh` | #3 + `eval_mode=worker` (hot-engine eval) = **845s/round**, the recommended fast path | §7.7 |
-| `p3_2gpu_A/B.yaml`, `p3_4gpu.yaml`, `run_p3.sh`, `run_p3_baseline.sh` | GPU-scaling + client-parallel: t1(4)=558, t1(2)=725, #3 2×2=727s (−35%) | §Lever #3 |
-| `ws_eval_inline/parallel.yaml`, `ws_xround_*.yaml`, `paper_ws_mode*.yaml`, `run_evalmode.sh`, `run_paper_modes*.sh`, `run_paper_4card.sh` | eval-mode sweep (inline / parallel / shared / worker) + cross-round persistence | §7.4 |
-| `ws_clientend*.yaml` | client-end eval "circles" (per-client val marks) | §7.4 |
-| `webshop_prewarm_on/off.yaml` | lever #2 — env-service pre-warm | §Lever #2 |
-| `tinyguess_*.yaml`, `persist_full.yaml`, `subproc_full.yaml`, `run_persistent_smoke.sh` | persistent-trainer vs subprocess equivalence smokes | §7.1 / §7.2 |
-| `ppo_*.yaml`, `xround_*.yaml`, `run_xround_*.sh`, `run_ppo_persist_smoke.sh` | PPO + cross-round persistence (critic reload) | §7.2 |
+| [`webshop/`](./webshop/) | WebShop eval-mode sweep (inline/parallel/shared/worker), cross-round persistence, client-end eval marks, lever-#2 prewarm | acceleration.md §7.4 / §Lever #2 |
+| [`alfworld/`](./alfworld/) | **ALFWorld** eval-mode sweep, GPU-scaling (g1/g2/g4), 2-job concurrency, de-risk smoke | alfworld_testing.md §6 |
+| [`client_parallel/`](./client_parallel/) | #3 client-parallel layout (1/2/4-GPU, +worker eval) | acceleration.md §Lever #3 / §7.7 |
+| [`dev/`](./dev/) | persistent-trainer (#4) vs subprocess equivalence, cross-round, PPO critic-reload, TinyGuess/windowed smokes | acceleration.md §7.1 / §7.2 |
+| [`helpers/`](./helpers/) | `standalone_eval.py`, `cmp_hf.py`, `critic_diag.py` | — |
 
-## Helpers
-- `standalone_eval.py` — faithful standalone val pass (drives `run_fed._build_eval` → the same verl
-  val-only path the loop uses); used by `run_complete.sh` to measure hidden-eval cost.
-- `cmp_hf.py` — tensor-by-tensor HF safetensors compare (cross-mode weight equivalence).
-- `critic_diag.py` — PPO critic-reload diagnostics.
+## Drivers (`run_*.sh`)
+
+Entry points, run from the repo root. The **live** ALFWorld drivers (`run_alf_evalmode.sh`) reference
+configs at their new subfolder paths (`accel/alfworld/…`). The **historical WebShop/#3 drivers**
+(`run_p3.sh`, `run_evalmode.sh`, `run_complete.sh`, `run_2x1gpu.sh`, `run_paper_*.sh`, `run_worker3.sh`,
+`run_ws_smoke.sh`, `run_xround_*.sh`, …) were authored against the **retired `_scratch/accel/` base** for
+both config input and (gitignored) output, and are kept **for provenance** — to re-run one, resolve its
+config from the appropriate subfolder (`accel/<env>/<cfg>.yaml`) and point output at any gitignored dir.
+The numbers they produced are recorded in the acceleration docs.
+
+## Outputs
+Run **output** (checkpoints, dumps, per-config logs) is gitignored — sent to `runs/` or any scratch
+location, never committed. Source lives here; outputs do not. (See [[no-scratch-dir]] rationale in the
+acceleration docs.)
