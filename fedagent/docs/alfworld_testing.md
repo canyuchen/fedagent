@@ -262,6 +262,7 @@ and both predictions *flipped*: the per-step 1-GPU penalty did **not** shrink (+
 **inline** (not shared) is the eval-mode loser.
 
 ## See also
+- [acceleration_cross_env.md](./acceleration_cross_env.md) — **WebShop vs ALFWorld side by side** (the §6 results distilled into one master table + the transfer/flip principle)
 - [acceleration.md](./acceleration.md) — lever design, cold-start dissection, equivalence audits
 - [acceleration_results.md](./acceleration_results.md) — the WebShop numbers this doc reasons from
 - [acceleration_report.md](./acceleration_report.md) — the complete acceleration walkthrough
