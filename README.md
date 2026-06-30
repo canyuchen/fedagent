@@ -20,7 +20,7 @@
 
 - **[Jun 2026]** FedAgent is gradually migrating to **verl 0.8.0** on the
   [`migrate/verl-0.8.0`](https://github.com/sunblaze-ucb/FedAgent/tree/migrate/verl-0.8.0)
-  branch, which is a thin overlay (no trainer fork) running federated **LLM-agent** GRPO/PPO on stock
+  branch, which is a thin overlay (no trainer fork) running federated LLM agent GRPO/PPO on stock
   verl 0.8, with WebShop + ALFWorld acceleration studies.
 - **[Jun 2026]** Initial release of the FedAgent library, federated PPO/GRPO
   trainer, two-level heterogeneity suite, and full WebShop + ALFWorld reproduction.
